@@ -116,6 +116,7 @@ CoverageReport buildCoverageReport(
             LexemeCandidate copy;
             copy.lexemeId = candidate.lexemeId.idup;
             copy.lexicalCategoryId = candidate.lexicalCategoryId.idup;
+            copy.matchMethod = candidate.matchMethod.idup;
             foreach (senseId; candidate.senseIds)
                 copy.senseIds ~= senseId.idup;
             entry.candidates ~= copy;
@@ -199,6 +200,7 @@ JSONValue coverageJson(ref const CoverageReport report)
             JSONValue c = JSONValue.emptyObject;
             c["lexemeId"] = candidate.lexemeId;
             c["lexicalCategoryId"] = candidate.lexicalCategoryId;
+            c["matchMethod"] = candidate.matchMethod;
             JSONValue senses = JSONValue.emptyArray;
             foreach (sense; candidate.senseIds)
                 senses.array ~= JSONValue(sense);

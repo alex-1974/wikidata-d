@@ -8,6 +8,7 @@ import std.algorithm.searching : canFind, startsWith;
 import std.exception : enforce;
 import std.json : JSONValue, JSONType, parseJSON;
 import wikidata.catalog : VocabularyCatalog;
+import wikidata.lexical_categories : CategoryCompatibility;
 import wikidata.query : buildLexemeQuery, isEntityId;
 import wikidata.relations : isSenseId;
 
@@ -22,6 +23,7 @@ struct LexemeCandidate
     string lexemeId;
     string lexicalCategoryId;
     string[] senseIds;
+    string matchMethod; // "exact" or "subclass"; empty in legacy callers
 }
 
 enum CatalogMatchStatus { noMatch, matched, multipleCandidates }
@@ -102,6 +104,17 @@ CatalogMatch[] matchCatalog(
     const(CatalogLookupBatch)[] batches,
     JSONValue[] responses)
 {
+    CategoryCompatibility empty;
+    return matchCatalogWithCategories(catalog, batches, responses, empty);
+}
+
+/// Match with explicit P279 subclass relations retrieved from Wikidata.
+CatalogMatch[] matchCatalogWithCategories(
+    ref const VocabularyCatalog catalog,
+    const(CatalogLookupBatch)[] batches,
+    JSONValue[] responses,
+    ref const CategoryCompatibility categories)
+{
     enforce(batches.length == responses.length,
         "One complete response is required per query batch");
     SearchHit[] hits;
@@ -147,14 +160,26 @@ CatalogMatch[] matchCatalog(
             // POS restrictions apply to each lookup variant independently.
             // Do not discard the source entry if one variant is unmatched.
             bool targetMatches = false;
+            string matchMethod;
             foreach (target; entry.lookupTargets)
-                if (target.lemma == hit.lemma &&
-                    (target.lexicalCategoryId.length == 0 ||
-                     target.lexicalCategoryId == hit.candidate.lexicalCategoryId))
+            {
+                if (target.lemma != hit.lemma)
+                    continue;
+                bool exact = target.lexicalCategoryId.length == 0 ||
+                    target.lexicalCategoryId == hit.candidate.lexicalCategoryId;
+                if (exact)
                 {
                     targetMatches = true;
+                    matchMethod = "exact";
                     break;
                 }
+                if (categories.compatible(hit.candidate.lexicalCategoryId,
+                    target.lexicalCategoryId))
+                {
+                    targetMatches = true;
+                    matchMethod = "subclass";
+                }
+            }
             if (!targetMatches)
                 continue;
             size_t index = match.candidates.length;
@@ -165,11 +190,19 @@ CatalogMatch[] matchCatalog(
                     break;
                 }
             if (index == match.candidates.length)
-                match.candidates ~= hit.candidate;
+            {
+                auto added = hit.candidate;
+                added.matchMethod = matchMethod;
+                match.candidates ~= added;
+            }
             else
+            {
+                if (matchMethod == "exact")
+                    match.candidates[index].matchMethod = "exact";
                 foreach (sense; hit.candidate.senseIds)
                     if (!match.candidates[index].senseIds.canFind(sense))
                         match.candidates[index].senseIds ~= sense;
+            }
         }
         if (match.candidates.length == 1)
             match.status = CatalogMatchStatus.matched;
@@ -267,4 +300,36 @@ unittest
     assert(expanded.length == 2);
     assert(expanded[0].candidates.length == 2);
     assert(expanded[1].candidates.length == 2);
+}
+
+
+unittest
+{
+    import std.json : parseJSON;
+    import wikidata.catalog : parseCatalog;
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"test","languageCode":"it",
+      "languageEntityId":"Q652","level":"A1","source":{},"entries":[
+      {"id":"one","lemma":"io","lexicalCategoryId":"Q36224"},
+      {"id":"two","lemma":"i","lexicalCategoryId":"Q103184"}
+    ]}`);
+    auto batches = buildCatalogLookupBatches(catalog, 20);
+    JSONValue[] responses = [parseJSON(`{"results":{"bindings":[
+      {"lemma":{"value":"io"},
+       "lexeme":{"value":"http://www.wikidata.org/entity/L101"},
+       "category":{"value":"http://www.wikidata.org/entity/Q468801"},
+       "sense":{"value":"http://www.wikidata.org/entity/L101-S1"}},
+      {"lemma":{"value":"i"},
+       "lexeme":{"value":"http://www.wikidata.org/entity/L102"},
+       "category":{"value":"http://www.wikidata.org/entity/Q9788"}}
+    ]}}`)];
+    auto baseline = matchCatalog(catalog, batches, responses);
+    assert(baseline[0].status == CatalogMatchStatus.noMatch);
+    CategoryCompatibility compatibility;
+    compatibility.add("Q468801", "Q36224");
+    auto extended = matchCatalogWithCategories(catalog, batches,
+        responses, compatibility);
+    assert(extended[0].status == CatalogMatchStatus.matched);
+    assert(extended[0].candidates[0].matchMethod == "subclass");
+    assert(extended[0].candidates[0].senseIds == ["L101-S1"]);
+    assert(extended[1].status == CatalogMatchStatus.noMatch);
 }
