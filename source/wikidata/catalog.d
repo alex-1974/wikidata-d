@@ -9,12 +9,21 @@ import std.file : readText;
 import std.json : JSONValue, JSONType, parseJSON;
 import wikidata.query : isEntityId;
 
+/// One exact Wikidata Lexeme search target derived from one catalogue entry.
+/// Multiple targets never split or replace the original catalogue record.
+struct CatalogLookupTarget
+{
+    string lemma;
+    string lexicalCategoryId;  /// Optional POS restriction, Wikidata Q-ID.
+}
+
 struct CatalogEntry
 {
     string id;                  /// Stable ID from this catalogue.
     string lemma;               /// Original source spelling.
     string lexicalCategoryId;   /// Optional Wikidata POS Q-ID.
-    string[] lookupLemmas;      /// Explicit search forms; source lemma retained.
+    string[] lookupLemmas;      /// Legacy search strings retained for M4 consumers.
+    CatalogLookupTarget[] lookupTargets; /// Searches with per-variant POS.
     JSONValue raw;              /// All original source fields.
 }
 
@@ -84,18 +93,51 @@ VocabularyCatalog parseCatalog(JSONValue json)
                 entry.lexicalCategoryId[0] == 'Q', "Expected POS Q-ID");
         }
         auto search = "lookupLemmas" in record.object;
-        if (search is null)
-            entry.lookupLemmas = [entry.lemma];
+        auto targets = "lookupTargets" in record.object;
+        enforce(search is null || targets is null,
+            "Use lookupLemmas or lookupTargets, not both");
+        if (targets !is null)
+        {
+            enforce((*targets).type == JSONType.array &&
+                (*targets).array.length != 0, "Invalid lookupTargets");
+            foreach (targetRecord; (*targets).array)
+            {
+                enforce(targetRecord.type == JSONType.object,
+                    "Lookup target must be an object");
+                CatalogLookupTarget target;
+                target.lemma = requiredString(targetRecord, "lemma");
+                auto targetCategory = "lexicalCategoryId" in targetRecord.object;
+                if (targetCategory !is null)
+                {
+                    enforce((*targetCategory).type == JSONType.string,
+                        "Invalid lookup target category");
+                    target.lexicalCategoryId = (*targetCategory).str;
+                    enforce(isEntityId(target.lexicalCategoryId) &&
+                        target.lexicalCategoryId[0] == 'Q',
+                        "Expected target POS Q-ID");
+                }
+                entry.lookupTargets ~= target;
+                entry.lookupLemmas ~= target.lemma;
+            }
+        }
         else
         {
-            enforce((*search).type == JSONType.array &&
-                (*search).array.length != 0, "Invalid lookupLemmas");
-            foreach (variant; (*search).array)
+            if (search is null)
+                entry.lookupLemmas = [entry.lemma];
+            else
             {
-                enforce(variant.type == JSONType.string &&
-                    variant.str.length != 0, "Invalid lookup lemma");
-                entry.lookupLemmas ~= variant.str;
+                enforce((*search).type == JSONType.array &&
+                    (*search).array.length != 0, "Invalid lookupLemmas");
+                foreach (variant; (*search).array)
+                {
+                    enforce(variant.type == JSONType.string &&
+                        variant.str.length != 0, "Invalid lookup lemma");
+                    entry.lookupLemmas ~= variant.str;
+                }
             }
+            foreach (variant; entry.lookupLemmas)
+                entry.lookupTargets ~= CatalogLookupTarget(
+                    variant, entry.lexicalCategoryId);
         }
         entry.raw = record;
         catalog.entries ~= entry;
@@ -133,6 +175,22 @@ unittest
     assert(c.entries[2].lookupLemmas.length == 2);
     assert(c.entries[0].raw["position"].integer == 1);
     assert(c.raw["unrecognizedFutureField"]["keep"].boolean);
+    assert(c.entries[0].lookupTargets.length == 1);
+    assert(c.entries[0].lookupTargets[0].lexicalCategoryId == "Q1084");
+    assert(c.entries[2].lookupTargets.length == 2);
+
+    // Original catalogue row stays one row even with multiple POS targets.
+    auto multi = parseCatalog(`{
+      "schemaVersion":1,"id":"it-A1-perugia-probe","languageCode":"it",
+      "languageEntityId":"Q652","level":"A1","source":{},
+      "entries":[{"id":"334","lemma":"piacere", "originalPos":"v.int. - s.m.",
+        "lookupTargets":[
+          {"lemma":"piacere","lexicalCategoryId":"Q24905"},
+          {"lemma":"piacere","lexicalCategoryId":"Q1084"}]}]
+    }`);
+    assert(multi.entries.length == 1);
+    assert(multi.entries[0].lookupTargets.length == 2);
+    assert(multi.entries[0].raw["originalPos"].str == "v.int. - s.m.");
 
     import std.exception : assertThrown;
     assertThrown!Exception(parseCatalog(`{"schemaVersion":1,"id":"x"}`));
@@ -140,5 +198,10 @@ unittest
       "schemaVersion":1,"id":"x","languageCode":"it",
       "languageEntityId":"Q652","level":"A1","source":{},
       "entries":[{"id":"1","lemma":"a"},{"id":"1","lemma":"b"}]
+    }`));
+    assertThrown!Exception(parseCatalog(`{
+      "schemaVersion":1,"id":"x","languageCode":"it",
+      "languageEntityId":"Q652","level":"A1","source":{},
+      "entries":[{"id":"1","lemma":"a","lookupTargets":[]}]
     }`));
 }

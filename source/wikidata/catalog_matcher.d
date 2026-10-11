@@ -41,11 +41,11 @@ CatalogLookupBatch[] buildCatalogLookupBatches(
     bool[string] seen;
     string[] lemmas;
     foreach (entry; catalog.entries)
-        foreach (lemma; entry.lookupLemmas)
-            if ((lemma in seen) is null)
+        foreach (target; entry.lookupTargets)
+            if ((target.lemma in seen) is null)
             {
-                seen[lemma] = true;
-                lemmas ~= lemma;
+                seen[target.lemma] = true;
+                lemmas ~= target.lemma;
             }
     CatalogLookupBatch[] batches;
     for (size_t begin = 0; begin < lemmas.length; begin += batchSize)
@@ -144,10 +144,18 @@ CatalogMatch[] matchCatalog(
         match.catalogEntryId = entry.id;
         foreach (hit; hits)
         {
-            if (!entry.lookupLemmas.canFind(hit.lemma))
-                continue;
-            if (entry.lexicalCategoryId.length &&
-                entry.lexicalCategoryId != hit.candidate.lexicalCategoryId)
+            // POS restrictions apply to each lookup variant independently.
+            // Do not discard the source entry if one variant is unmatched.
+            bool targetMatches = false;
+            foreach (target; entry.lookupTargets)
+                if (target.lemma == hit.lemma &&
+                    (target.lexicalCategoryId.length == 0 ||
+                     target.lexicalCategoryId == hit.candidate.lexicalCategoryId))
+                {
+                    targetMatches = true;
+                    break;
+                }
+            if (!targetMatches)
                 continue;
             size_t index = match.candidates.length;
             foreach (i, candidate; match.candidates)
@@ -225,4 +233,38 @@ unittest
     assert(mappings[2].candidates[0].senseIds.length == 2);
     assert(mappings[3].status == CatalogMatchStatus.noMatch);
     assertThrown!Exception(matchCatalog(catalog, batches, answers[0 .. 1]));
+
+    // A single source row may legitimately select two lexical categories.
+    auto extended = parseCatalog(`{
+      "schemaVersion":1,"id":"it-A1-extended","languageCode":"it",
+      "languageEntityId":"Q652","level":"A1","source":{},
+      "entries":[
+        {"id":"334","lemma":"piacere","lookupTargets":[
+           {"lemma":"piacere","lexicalCategoryId":"Q24905"},
+           {"lemma":"piacere","lexicalCategoryId":"Q1084"}]},
+        {"id":"18","lemma":"amico/a","lookupTargets":[
+           {"lemma":"amico","lexicalCategoryId":"Q1084"},
+           {"lemma":"amica","lexicalCategoryId":"Q1084"}]}
+      ]}`);
+    auto expandedBatches = buildCatalogLookupBatches(extended, 20);
+    assert(expandedBatches.length == 1);
+    assert(expandedBatches[0].lemmas.length == 3);
+    JSONValue[] expandedResponses = [parseJSON(`{"results":{"bindings":[
+      {"lemma":{"value":"piacere"},
+       "lexeme":{"value":"http://www.wikidata.org/entity/L10"},
+       "category":{"value":"http://www.wikidata.org/entity/Q24905"}},
+      {"lemma":{"value":"piacere"},
+       "lexeme":{"value":"http://www.wikidata.org/entity/L11"},
+       "category":{"value":"http://www.wikidata.org/entity/Q1084"}},
+      {"lemma":{"value":"amico"},
+       "lexeme":{"value":"http://www.wikidata.org/entity/L12"},
+       "category":{"value":"http://www.wikidata.org/entity/Q1084"}},
+      {"lemma":{"value":"amica"},
+       "lexeme":{"value":"http://www.wikidata.org/entity/L13"},
+       "category":{"value":"http://www.wikidata.org/entity/Q1084"}}
+    ]}}`)];
+    auto expanded = matchCatalog(extended, expandedBatches, expandedResponses);
+    assert(expanded.length == 2);
+    assert(expanded[0].candidates.length == 2);
+    assert(expanded[1].candidates.length == 2);
 }
