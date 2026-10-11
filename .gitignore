@@ -27,3 +27,5 @@ wikidata-d-test-*
 
 # Generated DUB test executables
 wikidata-d-test-*
+/inspect
+/relations
