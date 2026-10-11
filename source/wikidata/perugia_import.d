@@ -99,21 +99,121 @@ void validatePerugiaRows(const(PerugiaRow)[] rows, size_t expectedCount = 486)
                 row.number));
 }
 
+/**
+ * Source-specific POS hints. The source annotation remains authoritative and
+ * unchanged; these IDs merely constrain Wikidata Lexeme lookup candidates.
+ * Wikidata sometimes uses finer lexical categories (notably pronouns). The
+ * eventual coverage report must distinguish a POS-limited miss from a true
+ * missing Lexeme.
+ */
 private string[] categoriesForAnnotation(string original)
 {
-    // Only mappings already established from Wikidata in M1-M4.
-    // Other parts of speech remain unrestricted search candidates.
     const pos = original.replace("–", "-").replace("—", "-")
                         .replace(" ", "").replace("(", "")
                         .replace(")", "");
+
+    // Italian locative pronominal particles are not reliably equivalent to
+    // one of the broad Wikidata lexical classes. Keep this case under review.
+    if (pos.canFind("part.pron.luogo"))
+        return null;
+
     string[] result;
     if (pos.canFind("s.m") || pos.canFind("s.f"))
-        result ~= "Q1084"; // noun
+        result ~= "Q1084";   // noun
     if (pos.canFind("agg."))
-        result ~= "Q34698"; // adjective
+        result ~= "Q34698";  // adjective
     if (pos.indexOf("v.") == 0 || pos.canFind("-v."))
-        result ~= "Q24905"; // verb (v.t., v.int., ...)
+        result ~= "Q24905";  // verb
+    if (pos.canFind("avv."))
+        result ~= "Q380057"; // adverb
+    // `v.int. pron.` denotes a pronominal verb, not a second POS "pronoun".
+    if (pos.canFind("pron.") && !pos.canFind("v.int.pron.") &&
+        !pos.canFind("v.t.pron."))
+        result ~= "Q36224";  // pronoun (generic; Wikidata has subtypes)
+    if (pos.canFind("inter."))
+        result ~= "Q83034";  // interjection
+    if (pos.canFind("art."))
+        result ~= "Q103184"; // article
+    if (pos.canFind("prep."))
+        result ~= "Q4833830"; // preposition
+    if (pos.canFind("cong."))
+        result ~= "Q36484";  // conjunction
     return result;
+}
+
+/**
+ * Reviewed orthographic search variants for the *source positions* identified
+ * in Perugia A1. These are not new catalogue rows and do not change Wikidata.
+ * Source spelling is checked before applying any entry-specific expansion.
+ * Unknown/changed spellings are kept as-is and marked for review.
+ */
+private string[] explicitSourceVariants(const ref PerugiaRow row)
+{
+    switch (row.number)
+    {
+    case 6:
+        if (row.lemma == "aereo(aeroplano)") return ["aereo", "aeroplano"];
+        break;
+    case 18:
+        if (row.lemma == "amico/a") return ["amico", "amica"];
+        break;
+    case 43:
+        if (row.lemma == "bambino/a") return ["bambino", "bambina"];
+        break;
+    case 51:
+        if (row.lemma == "bici(cletta)") return ["bici", "bicicletta"];
+        break;
+    case 69:
+        if (row.lemma == "cameriere/a") return ["cameriere", "cameriera"];
+        break;
+    case 95:
+        if (row.lemma == "chiamare/si") return ["chiamare", "chiamarsi"];
+        break;
+    case 112:
+        if (row.lemma == "compagno/a") return ["compagno", "compagna"];
+        break;
+    case 146:
+        if (row.lemma == "dottore/ssa") return ["dottore", "dottoressa"];
+        break;
+    case 171:
+        if (row.lemma == "figlio/a") return ["figlio", "figlia"];
+        break;
+    case 286:
+        if (row.lemma == "moto(cicletta)") return ["moto", "motocicletta"];
+        break;
+    case 301:
+        if (row.lemma == "nonno/a") return ["nonno", "nonna"];
+        break;
+    case 344:
+        if (row.lemma == "poco (po’)") return ["poco", "po'", "po’"];
+        break;
+    case 361:
+        if (row.lemma == "professore/ssa")
+            return ["professore", "professoressa"];
+        break;
+    case 375:
+        if (row.lemma == "ragazzo/a") return ["ragazzo", "ragazza"];
+        break;
+    case 406:
+        if (row.lemma == "signore/a") return ["signore", "signora"];
+        break;
+    case 432:
+        if (row.lemma == "studente/ssa") return ["studente", "studentessa"];
+        break;
+    case 460:
+        if (row.lemma == "un/o/a") return ["un", "uno", "una"];
+        break;
+    default:
+        break;
+    }
+    return null;
+}
+
+private bool complexSourceLemma(string lemma)
+{
+    return lemma.canFind("/") || lemma.canFind("(") ||
+           lemma.canFind(")") || lemma.canFind("<") ||
+           lemma.canFind("&");
 }
 
 /** Build an M5.1-compatible catalogue without touching or filtering source
@@ -148,29 +248,32 @@ JSONValue buildPerugiaCatalog(const(PerugiaRow)[] rows)
         entry["sourceHtml"] = row.rawLine;
 
         const categories = categoriesForAnnotation(row.annotation);
+        const variants = explicitSourceVariants(row);
+        const searchLemmas = variants.length ? variants : [row.lemma];
         JSONValue targets = JSONValue.emptyArray;
-        if (categories.length == 0)
+        foreach (searchLemma; searchLemmas)
         {
-            JSONValue target = JSONValue.emptyObject;
-            target["lemma"] = row.lemma;
-            targets.array ~= target;
-        }
-        else
-        {
-            foreach (category; categories)
+            if (categories.length == 0)
             {
                 JSONValue target = JSONValue.emptyObject;
-                target["lemma"] = row.lemma;
-                target["lexicalCategoryId"] = category;
+                target["lemma"] = searchLemma;
                 targets.array ~= target;
+            }
+            else
+            {
+                foreach (category; categories)
+                {
+                    JSONValue target = JSONValue.emptyObject;
+                    target["lemma"] = searchLemma;
+                    target["lexicalCategoryId"] = category;
+                    targets.array ~= target;
+                }
             }
         }
         entry["lookupTargets"] = targets;
 
         JSONValue reasons = JSONValue.emptyArray;
-        if (row.lemma.canFind("/") || row.lemma.canFind("(") ||
-            row.lemma.canFind(")") || row.lemma.canFind("<") ||
-            row.lemma.canFind("&"))
+        if (complexSourceLemma(row.lemma) && variants.length == 0)
             reasons.array ~= JSONValue("complex-source-lemma");
         if (categories.length == 0)
             reasons.array ~= JSONValue("pos-mapping-unresolved");
@@ -188,9 +291,20 @@ unittest
     import std.exception : assertThrown;
     import wikidata.catalog : parseCatalog;
 
-    assert(categoriesForAnnotation("(avv.)").length == 0);
+    assert(categoriesForAnnotation("(avv.)")[0] == "Q380057");
+    assert(categoriesForAnnotation("(pron.)")[0] == "Q36224");
+    assert(categoriesForAnnotation("(inter.)")[0] == "Q83034");
+    assert(categoriesForAnnotation("(art.)")[0] == "Q103184");
+    assert(categoriesForAnnotation("(prep.)")[0] == "Q4833830");
+    assert(categoriesForAnnotation("(cong.)")[0] == "Q36484");
     assert(categoriesForAnnotation("(agg.)")[0] == "Q34698");
     assert(categoriesForAnnotation("(v.int. - s.m.)").length == 2);
+    assert(categoriesForAnnotation("(v.t. – v.int. pron.)").length == 1);
+    assert(categoriesForAnnotation("(v.t. – v.int. pron.)")[0] == "Q24905");
+    assert(categoriesForAnnotation("(pron. - avv.)").length == 2);
+    assert(categoriesForAnnotation("(avv. - cong.)").length == 2);
+    assert(categoriesForAnnotation("(prep.- avv.)").length == 2);
+    assert(categoriesForAnnotation("(part. pron. luogo)").length == 0);
 
     // Three representative HTML source rows, using real source formatting.
     enum fixture =
@@ -244,8 +358,54 @@ unittest
     auto parsed = parseCatalog(output);
     assert(parsed.entries.length == 486);
     assert(parsed.entries[17].lemma == "amico/a");
-    assert(output["entries"][17]["reviewReasons"].array.length > 0);
+    assert(output["entries"][17]["reviewReasons"].array.length == 0);
+    assert(parsed.entries[17].lookupTargets.length == 2);
+    assert(parsed.entries[17].lookupTargets[1].lemma == "amica");
     assert(parsed.entries[293].lookupTargets[0].lexicalCategoryId ==
         "Q34698");
     assert(parsed.entries[333].lookupTargets.length == 2);
+
+    // Every reviewed complex source form expands into explicit search targets.
+    struct Example { size_t number; string source; string[] expected; }
+    Example[] cases = [
+        Example(6, "aereo(aeroplano)", ["aereo", "aeroplano"]),
+        Example(18, "amico/a", ["amico", "amica"]),
+        Example(43, "bambino/a", ["bambino", "bambina"]),
+        Example(51, "bici(cletta)", ["bici", "bicicletta"]),
+        Example(69, "cameriere/a", ["cameriere", "cameriera"]),
+        Example(95, "chiamare/si", ["chiamare", "chiamarsi"]),
+        Example(112, "compagno/a", ["compagno", "compagna"]),
+        Example(146, "dottore/ssa", ["dottore", "dottoressa"]),
+        Example(171, "figlio/a", ["figlio", "figlia"]),
+        Example(286, "moto(cicletta)", ["moto", "motocicletta"]),
+        Example(301, "nonno/a", ["nonno", "nonna"]),
+        Example(344, "poco (po’)", ["poco", "po'", "po’"]),
+        Example(361, "professore/ssa", ["professore", "professoressa"]),
+        Example(375, "ragazzo/a", ["ragazzo", "ragazza"]),
+        Example(406, "signore/a", ["signore", "signora"]),
+        Example(432, "studente/ssa", ["studente", "studentessa"]),
+        Example(460, "un/o/a", ["un", "uno", "una"])
+    ];
+    assert(cases.length == 17);
+    foreach (c; cases)
+    {
+        PerugiaRow variantRow;
+        variantRow.number = c.number;
+        variantRow.lemma = c.source;
+        auto got = explicitSourceVariants(variantRow);
+        assert(got == c.expected);
+        // No accidental expansion if the university changes source spelling.
+        variantRow.lemma = "source changed";
+        assert(explicitSourceVariants(variantRow).length == 0);
+    }
+    PerugiaRow special;
+    special.number = 460;
+    special.lemma = "un/o/a";
+    special.annotation = "(art.)";
+    complete[459] = special;
+    auto refreshed = buildPerugiaCatalog(complete);
+    assert(refreshed["entries"][459]["lookupTargets"].array.length == 3);
+    assert(refreshed["entries"][459]["lookupTargets"].array[0]
+        ["lexicalCategoryId"].str == "Q103184");
+    assert(refreshed["entries"][459]["reviewReasons"].array.length == 0);
 }
