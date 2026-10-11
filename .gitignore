@@ -29,3 +29,5 @@ wikidata-d-test-*
 wikidata-d-test-*
 /inspect
 /relations
+
+/catalogs/local/
