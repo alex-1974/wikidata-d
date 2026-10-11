@@ -1,0 +1,7 @@
+{
+  "name": "wikidata-d",
+  "description": "Small, GUI-independent Wikidata SPARQL and entity client",
+  "targetType": "library",
+  "sourcePaths": ["source"],
+  "libs": ["curl"]
+}

@@ -1,0 +1,23 @@
+# DUB artifacts
+.dub/
+.dub-cache/
+dub.selections.json
+
+# D artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.lst
+*.map
+
+# Example programs
+/lookup
+
+# Editors
+.idea/
+.vscode/
+*~
