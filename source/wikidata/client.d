@@ -10,7 +10,7 @@ import std.exception : enforce;
 import std.json : JSONValue, JSONType, parseJSON;
 import std.net.curl : HTTP, get;
 import std.uri : encodeComponent;
-import core.time : dur;
+import core.time : Duration, dur;
 
 import wikidata.query : buildLexemeQuery, isEntityId;
 
@@ -20,6 +20,8 @@ struct WikidataClient
     string userAgent;
     string sparqlEndpoint = "https://query.wikidata.org/sparql";
     string entityEndpoint = "https://www.wikidata.org/w/api.php";
+    /// Allow the public query service to reach its documented 60s deadline.
+    Duration sparqlTimeout = dur!"seconds"(70);
 
     this(string userAgent)
     {
@@ -33,7 +35,7 @@ struct WikidataClient
         enforce(sparql.length != 0, "SPARQL query must not be empty");
         auto url = sparqlEndpoint ~ "?query=" ~ encodeComponent(sparql)
                  ~ "&format=json";
-        return requestJson(url, "application/sparql-results+json");
+        return requestJson(url, "application/sparql-results+json", sparqlTimeout);
     }
 
     /// Find exact lemma candidates; language and optional POS are explicit.
@@ -53,7 +55,7 @@ struct WikidataClient
         enforce(isEntityId(id), "Invalid Wikidata entity ID");
         auto url = entityEndpoint
                  ~ "?action=wbgetentities&format=json&ids=" ~ id;
-        auto data = requestJson(url, "application/json");
+        auto data = requestJson(url, "application/json", dur!"seconds"(30));
         enforce(data.type == JSONType.object, "Malformed Wikidata API response");
         if (auto error = "error" in data.object)
             throw new Exception("Wikidata API error: " ~ (*error).toString());
@@ -67,13 +69,13 @@ struct WikidataClient
         return entity;
     }
 
-    private JSONValue requestJson(string url, string accept)
+    private JSONValue requestJson(string url, string accept, Duration timeout)
     {
         auto http = HTTP(url);
         http.setUserAgent(userAgent);
         http.addRequestHeader("Accept", accept);
         http.connectTimeout = dur!"seconds"(10);
-        http.operationTimeout = dur!"seconds"(30);
+        http.operationTimeout = timeout;
         auto payload = get(url, http);
         return parseJSON(payload.idup);
     }

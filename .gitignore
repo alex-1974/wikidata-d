@@ -31,3 +31,6 @@ wikidata-d-test-*
 /relations
 
 /catalogs/local/
+
+# Local coverage reports
+/reports/local/
