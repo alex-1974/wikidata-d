@@ -21,3 +21,9 @@ dub.selections.json
 .idea/
 .vscode/
 *~
+
+# Generated DUB test executables
+wikidata-d-test-*
+
+# Generated DUB test executables
+wikidata-d-test-*
