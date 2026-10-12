@@ -1,0 +1,306 @@
+{
+  "schemaVersion": "wikidata-r1.10-typed-binding-research-v1",
+  "note": "Synthetic typed binding experiments only. Not original Wikidata evidence.",
+  "cases": [
+    {
+      "id": "same-form-witness",
+      "joinOn": [
+        "form"
+      ],
+      "atoms": [
+        {
+          "id": "singular",
+          "bindings": [
+            {
+              "form": "synthetic:F1"
+            }
+          ]
+        },
+        {
+          "id": "masculine",
+          "bindings": [
+            {
+              "form": "synthetic:F1"
+            }
+          ]
+        }
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 1,
+      "variableTypes": {
+        "form": "form"
+      }
+    },
+    {
+      "id": "different-forms-not-merged",
+      "joinOn": [
+        "form"
+      ],
+      "atoms": [
+        {
+          "id": "singular",
+          "bindings": [
+            {
+              "form": "synthetic:F1"
+            }
+          ]
+        },
+        {
+          "id": "masculine",
+          "bindings": [
+            {
+              "form": "synthetic:F2"
+            }
+          ]
+        }
+      ],
+      "expectedStatus": "unknown",
+      "expectedMatches": 0,
+      "variableTypes": {
+        "form": "form"
+      }
+    },
+    {
+      "id": "same-text-different-form-ids",
+      "joinOn": [
+        "form"
+      ],
+      "atoms": [
+        {
+          "id": "text-is-stiamo",
+          "bindings": [
+            {
+              "form": "synthetic:F9"
+            }
+          ]
+        },
+        {
+          "id": "other-stiamo-form",
+          "bindings": [
+            {
+              "form": "synthetic:F51"
+            }
+          ]
+        }
+      ],
+      "expectedStatus": "unknown",
+      "expectedMatches": 0,
+      "variableTypes": {
+        "form": "form"
+      }
+    },
+    {
+      "id": "sense-scope-isolated",
+      "joinOn": [
+        "sense"
+      ],
+      "atoms": [
+        {
+          "id": "sense-class7",
+          "bindings": [
+            {
+              "sense": "synthetic:S2"
+            }
+          ]
+        },
+        {
+          "id": "sense-class8",
+          "bindings": [
+            {
+              "sense": "synthetic:S3"
+            }
+          ]
+        }
+      ],
+      "expectedStatus": "unknown",
+      "expectedMatches": 0,
+      "variableTypes": {
+        "sense": "sense"
+      }
+    },
+    {
+      "id": "two-variants-preserved",
+      "joinOn": [
+        "form"
+      ],
+      "atoms": [
+        {
+          "id": "person1sg",
+          "bindings": [
+            {
+              "form": "synthetic:F2"
+            },
+            {
+              "form": "synthetic:F3"
+            }
+          ]
+        },
+        {
+          "id": "present",
+          "bindings": [
+            {
+              "form": "synthetic:F2"
+            },
+            {
+              "form": "synthetic:F3"
+            }
+          ]
+        }
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 2,
+      "variableTypes": {
+        "form": "form"
+      }
+    },
+    {
+      "id": "language-boundary",
+      "joinOn": [
+        "language"
+      ],
+      "atoms": [
+        {
+          "id": "same-feature-it",
+          "bindings": [
+            {
+              "language": "Q652"
+            }
+          ]
+        },
+        {
+          "id": "same-feature-sw",
+          "bindings": [
+            {
+              "language": "Q7838"
+            }
+          ]
+        }
+      ],
+      "expectedStatus": "unknown",
+      "expectedMatches": 0,
+      "variableTypes": {
+        "language": "language"
+      }
+    },
+    {
+      "id": "role-feature-unification",
+      "joinOn": [
+        "class"
+      ],
+      "atoms": [
+        {
+          "id": "noun-class",
+          "bindings": [
+            {
+              "noun": "synthetic:N1",
+              "class": "synthetic:Class7"
+            }
+          ]
+        },
+        {
+          "id": "adjective-class",
+          "bindings": [
+            {
+              "adjective": "synthetic:A1",
+              "class": "synthetic:Class7"
+            }
+          ]
+        }
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 1,
+      "variableTypes": {
+        "adjective": "lexeme",
+        "class": "feature",
+        "noun": "lexeme"
+      }
+    },
+    {
+      "id": "role-feature-mismatch",
+      "joinOn": [
+        "class"
+      ],
+      "atoms": [
+        {
+          "id": "noun-class",
+          "bindings": [
+            {
+              "noun": "synthetic:N1",
+              "class": "synthetic:Class7"
+            }
+          ]
+        },
+        {
+          "id": "adjective-class",
+          "bindings": [
+            {
+              "adjective": "synthetic:A1",
+              "class": "synthetic:Class8"
+            }
+          ]
+        }
+      ],
+      "expectedStatus": "unknown",
+      "expectedMatches": 0,
+      "variableTypes": {
+        "adjective": "lexeme",
+        "class": "feature",
+        "noun": "lexeme"
+      }
+    },
+    {
+      "id": "no-positive-proof",
+      "joinOn": [
+        "form"
+      ],
+      "atoms": [
+        {
+          "id": "present-form",
+          "bindings": [
+            {
+              "form": "synthetic:F9"
+            }
+          ]
+        },
+        {
+          "id": "missing-indicative",
+          "bindings": []
+        }
+      ],
+      "expectedStatus": "unknown",
+      "expectedMatches": 0,
+      "variableTypes": {
+        "form": "form"
+      }
+    },
+    {
+      "id": "missing-required-binding",
+      "joinOn": [
+        "form"
+      ],
+      "atoms": [
+        {
+          "id": "one",
+          "bindings": [
+            {
+              "form": "synthetic:F1"
+            }
+          ]
+        },
+        {
+          "id": "missing-form-variable",
+          "bindings": [
+            {
+              "lexeme": "synthetic:L1"
+            }
+          ]
+        }
+      ],
+      "expectedError": "missing join variable",
+      "variableTypes": {
+        "form": "form",
+        "lexeme": "lexeme"
+      }
+    }
+  ]
+}

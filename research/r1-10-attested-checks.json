@@ -1,0 +1,124 @@
+{
+  "schemaVersion": "wikidata-r1.10-attested-checks-v1",
+  "note": "Research-only offline checks against original R1.7 evidence",
+  "checks": [
+    {
+      "id": "it-context-source",
+      "case": "it-articles",
+      "languageId": "Q652",
+      "constructionId": "r1-10:attested-research",
+      "variable": "source",
+      "type": "form",
+      "predicates": [
+        "it-attested-context"
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 1
+    },
+    {
+      "id": "de-sense-qualifiers",
+      "case": "de-examples",
+      "languageId": "Q188",
+      "constructionId": "r1-10:attested-research",
+      "variable": "source",
+      "type": "sense",
+      "predicates": [
+        "de-sense-argument-with-qualifiers"
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 1
+    },
+    {
+      "id": "de-unproven-qualifier",
+      "case": "de-examples",
+      "languageId": "Q188",
+      "constructionId": "r1-10:attested-research",
+      "variable": "source",
+      "type": "sense",
+      "predicates": [
+        "de-cross-sense-qualifier-does-not-match"
+      ],
+      "expectedStatus": "unknown",
+      "expectedMatches": 0
+    },
+    {
+      "id": "de-lexeme-gender",
+      "case": "de-examples",
+      "languageId": "Q188",
+      "constructionId": "r1-10:attested-research",
+      "variable": "source",
+      "type": "lexeme",
+      "predicates": [
+        "de-lexeme-gender-is-lexeme-scope"
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 1
+    },
+    {
+      "id": "tr-form-context",
+      "case": "tr-examples",
+      "languageId": "Q256",
+      "constructionId": "r1-10:attested-research",
+      "variable": "source",
+      "type": "form",
+      "predicates": [
+        "tr-qualified-context"
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 1
+    },
+    {
+      "id": "sw-sense-class-7",
+      "case": "sw-all",
+      "languageId": "Q7838",
+      "constructionId": "r1-10:attested-research",
+      "variable": "source",
+      "type": "sense",
+      "predicates": [
+        "sw-sense-requires-noun-class-7"
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 1
+    },
+    {
+      "id": "sw-sense-class-8",
+      "case": "sw-all",
+      "languageId": "Q7838",
+      "constructionId": "r1-10:attested-research",
+      "variable": "source",
+      "type": "sense",
+      "predicates": [
+        "sw-sense-requires-noun-class-8"
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 1
+    },
+    {
+      "id": "sw-same-sense-two-claims",
+      "case": "sw-all",
+      "languageId": "Q7838",
+      "constructionId": "r1-10:attested-research",
+      "variable": "source",
+      "type": "sense",
+      "predicates": [
+        "sw-sense-requires-noun-class-7",
+        "sw-sense-requires-noun-class-8"
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 1
+    },
+    {
+      "id": "sw-attested-lexeme-part",
+      "case": "sw-all",
+      "languageId": "Q7838",
+      "constructionId": "r1-10:attested-research",
+      "variable": "source",
+      "type": "lexeme",
+      "predicates": [
+        "sw-attested-lexeme-part-with-position"
+      ],
+      "expectedStatus": "supported",
+      "expectedMatches": 1
+    }
+  ]
+}
