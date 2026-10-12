@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "wikidata-r1.11b-dimension-profile-v1",
+  "profileId": "SYNTHETIC-NOT-FOR-REAL-WIKIDATA",
+  "anchors": [
+    {
+      "id": "synthetic-number-a",
+      "dimensionId": "number",
+      "facet": "inflection",
+      "rootQId": "Q900",
+      "source": "SYNTHETIC fixture only",
+      "allowedPaths": [
+        [
+          "P31"
+        ],
+        [
+          "P31",
+          "P279"
+        ]
+      ]
+    },
+    {
+      "id": "synthetic-number-b",
+      "dimensionId": "number",
+      "facet": "inflection",
+      "rootQId": "Q902",
+      "source": "SYNTHETIC fixture only",
+      "allowedPaths": [
+        [
+          "P31"
+        ]
+      ]
+    },
+    {
+      "id": "synthetic-gender",
+      "dimensionId": "gender",
+      "facet": "inflection",
+      "rootQId": "Q901",
+      "source": "SYNTHETIC fixture only",
+      "allowedPaths": [
+        [
+          "P31"
+        ]
+      ]
+    },
+    {
+      "id": "synthetic-representation",
+      "dimensionId": "representation_kind",
+      "facet": "representation",
+      "rootQId": "Q905",
+      "source": "SYNTHETIC fixture only",
+      "allowedPaths": [
+        [
+          "P31"
+        ]
+      ]
+    }
+  ]
+}
