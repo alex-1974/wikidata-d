@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "id": "it.verb.indicative.present",
+  "languageCode": "it",
+  "lexicalCategoryId": "Q24905",
+  "implications": [
+    {
+      "id": "P279-Q56682909",
+      "sourceFeatureId": "Q56682909",
+      "impliedFeatureIds": [
+        "Q682111",
+        "Q192613"
+      ],
+      "status": "approved",
+      "evidence": "Wikidata P279 relationship examined in M5.9b; manually reviewed, NOT revalidated on each evaluation"
+    }
+  ],
+  "incompatibleFeatureIds": [
+    "Q12547192",
+    "Q108524486",
+    "Q442485",
+    "Q501405",
+    "Q1475560",
+    "Q625581",
+    "Q473746",
+    "Q3502553",
+    "Q22716"
+  ],
+  "slots": [
+    {
+      "id": "1sg",
+      "requiredFeatureIds": [
+        "Q682111",
+        "Q192613",
+        "Q21714344",
+        "Q110786"
+      ],
+      "anchorFeatureIds": [
+        "Q21714344",
+        "Q110786"
+      ]
+    },
+    {
+      "id": "2sg",
+      "requiredFeatureIds": [
+        "Q682111",
+        "Q192613",
+        "Q51929049",
+        "Q110786"
+      ],
+      "anchorFeatureIds": [
+        "Q51929049",
+        "Q110786"
+      ]
+    },
+    {
+      "id": "3sg",
+      "requiredFeatureIds": [
+        "Q682111",
+        "Q192613",
+        "Q51929074",
+        "Q110786"
+      ],
+      "anchorFeatureIds": [
+        "Q51929074",
+        "Q110786"
+      ]
+    },
+    {
+      "id": "1pl",
+      "requiredFeatureIds": [
+        "Q682111",
+        "Q192613",
+        "Q21714344",
+        "Q146786"
+      ],
+      "anchorFeatureIds": [
+        "Q21714344",
+        "Q146786"
+      ]
+    },
+    {
+      "id": "2pl",
+      "requiredFeatureIds": [
+        "Q682111",
+        "Q192613",
+        "Q51929049",
+        "Q146786"
+      ],
+      "anchorFeatureIds": [
+        "Q51929049",
+        "Q146786"
+      ]
+    },
+    {
+      "id": "3pl",
+      "requiredFeatureIds": [
+        "Q682111",
+        "Q192613",
+        "Q51929074",
+        "Q146786"
+      ],
+      "anchorFeatureIds": [
+        "Q51929074",
+        "Q146786"
+      ]
+    }
+  ]
+}
