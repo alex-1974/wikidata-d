@@ -1,65 +1,73 @@
-# wikidata-d – M1 research client
+# wikidata-d
 
-Minimal, GUI-independent Wikidata client written in D.
+GUI-independent D library for working with Wikidata entities, Lexemes, Forms, Senses, and evidence-based multilingual grammar research.
 
-## Scope
+**Status:** active research/development through **R1.11-D1**. This is not a released vocabulary-trainer application, and the research classifiers do not authorize grammatical construction or automatic word-form selection.
 
-- Execute arbitrary SPARQL SELECT/ASK queries through Wikidata Query Service (JSON result).
-- Generate exact-match lexeme queries from BCP-47-style language codes, Wikidata language IDs, lemmas and an optional lexical-category Q-ID.
-- Fetch a full Wikidata Q/L/P entity using `wbgetentities` (JSON value).
-- Keep all unmodified Wikidata fields in the returned JSON.
+## What is implemented
 
-Not included in M1: automatic language-Q-ID resolution, persistence, retry/backoff, background execution, typed Wikidata L-F-S models, bidirectional relationships, `P9970` or `P5972` graph expansion, pagination, or GUI.
+- **Wikidata access:** SPARQL SELECT/ASK queries and `wbgetentities` fetching of Q/L/P entities, preserving the original JSON (`wikidata.client`, `wikidata.query`).
+- **Lexical models:** typed, lossless Lexeme/Form/Sense views, grammatical features, form representations, and lexical relations (`wikidata.lexeme` and related modules).
+- **Independent vocabulary catalogues:** language- and CEFR-level-neutral source catalogues and separate mapping/coverage results. Perugia import and normalization are research components; external reference lists are **not** silently changed or reduced when Wikidata lacks a match.
+- **Evidence-based grammar research:** original statement witnesses, typed expressions and bindings, conservative Q-item dimension candidates, and the R1.11-D1 semantic facet review contract (`wikidata.grammar_evidence`, `grammar_expression`, `grammar_binding`, `grammar_dimension`, `grammar_facet`).
+- **Declarative research contracts:** existing grammar-contract experiments evaluate stated conditions over attested Forms; they do not synthesize Forms or infer a language's grammar from unchecked ontology links.
 
-## Requirements
+The R1.11-D1 facet contract is **evidence-only**. Even a reviewed facet does not permit grammar production, composition, or Form selection. Missing data stays unknown; original Q/L/P IDs, Form identities, statement IDs, and source provenance must remain distinct.
 
-- DMD 2.111 or LDC 1.41 (target baseline; **not compiled in the generating environment**).
-- DUB, libcurl developer library, and internet connectivity for live smoke tests.
-- Proper identifying User-Agent. Replace the `example.org` contact URL before making live requests.
+See [R1.11-D1](docs/R1-11-D1-FACET-CONTRACT.md), [R1.11-B](docs/R1-11-B-Q-ITEM-DIMENSION-CLASSIFIER.md), and the other [research notes](docs/).
 
-## Build and test
+## Build and offline tests
+
+Requirements: DMD **2.111.0** or LDC **1.41.0** (baseline), DUB, a C compiler/linker, and **libcurl development headers/library** (for example `libcurl4-openssl-dev` on Ubuntu).
 
 ```bash
-dub test
+git clone https://github.com/alex-1974/wikidata-d.git
+cd wikidata-d
+git switch develop
 
-dmd -i -I=source examples/lookup.d -L-lcurl -of=lookup
-./lookup
+dub test --compiler=dmd --force
+dub test --compiler=ldc2 --force
+dub build --build=release --compiler=dmd --force
+
+python3 tools/r1_11b_reference.py
+python3 tools/r1_11b_graph_inventory.py --self-test
 ```
 
-`dub test` exercises the query-building code without network access. The example calls Wikidata live. It must not be run until the User-Agent is changed to a real project contact.
+The Python checks use checked-in research fixtures; `dub test` is intended to run without live Wikidata requests. The existing `examples/lookup.d` example performs **live** requests and is deliberately **not** run by CI.
 
-## Public API (M1)
+A real, identifiable application User-Agent with a contact address/URL is required before any live Wikidata requests. Respect Wikidata rate limits, API usage rules, and the Query Service's timeout/usage policies.
+
+## Basic client example
 
 ```d
 import wikidata.client;
-auto client = WikidataClient("my-vocabulary-project/0.1 (https://MY-REAL-CONTACT)");
+
+auto client = WikidataClient(
+    "my-vocabulary-project/0.1 (https://YOUR-REAL-CONTACT)");
+auto entity = client.getEntity("L5577"); // Original Wikibase JSON entity
 auto results = client.findLexemes("it", "Q652", ["gatto", "nero", "andare"]);
-auto entity = client.getEntity("L5577");
-auto raw = client.query("SELECT * WHERE { wd:Q146 ?p ?o } LIMIT 10");
 ```
 
-`query` returns the SPARQL JSON result; `getEntity` returns the entity object from `entities[ID]`. No Wikidata data is stored or discarded at this layer.
+The example makes network requests when executed; its User-Agent contact URL is a placeholder and must be replaced.
 
-## Synchronization principle
+## Source-of-truth policy
 
-A1/A2 catalogues are complete and independently versioned. Matching status and entity IDs live in a separate mapping layer. Wikidata source data may be missing or incomplete and are *not* overwritten by local translations. All available Forms, Senses and claims should be preserved when storing entities in a later milestone.
+- Complete A1/A2/etc. reference catalogues are stored and versioned independently of Wikidata coverage, with their original source metadata and applicable rights information.
+- Lexical content for the Wikidata-backed trainer comes from **attested Wikidata Lexemes, Forms, Senses, statements, and representations**, not locally invented fillers.
+- Catalogue-to-Wikidata associations and their matching status are kept in a separate layer.
+- Absence of evidence is **not** negative evidence. A Q-item classification or an ontology relationship alone is **not** a licensed grammatical production rule.
+- Research hypotheses, quarantined ontology anomalies, and source snapshots must remain distinguishable from approved application behavior.
 
-## Production considerations for M2+
+## Branches and continuous integration
 
-- Add structured HTTP errors and bounded retries honoring `Retry-After` for HTTP 429/5xx.
-- Prefer small, cacheable GET requests; use POST for long SPARQL requests.
-- Never block the dcanvas GUI thread on network calls.
-- Add request size limits, metrics, request scheduling, and incremental synchronization.
-- Use record/replay HTTP fixtures for reproducible integration tests.
-- Respect Wikidata WDQS time and rate limits.
+- **`develop`** – active development; [CI workflow](.github/workflows/ci.yml) runs offline tests and release builds with DMD 2.111.0 and LDC 1.41.0.
+- **`main`** – release branch; [release gate](.github/workflows/release-gate.yml) targets pull requests and pushes to `main` with the supported DMD/LDC compiler matrix. Changes should be reviewed and gated before merging.
+- No release or production grammar approval is implied by a passing CI build.
 
-Official documentation:
-- https://www.mediawiki.org/wiki/Wikidata_Query_Service/User_Manual
-- https://www.mediawiki.org/wiki/Wikibase/API
-- https://dlang.org/library/std/net/curl.html
+[Set up a working copy](LOCAL_SETUP.md).
 
-## Local repository
+## Upstream references
 
-The initial Git repository uses the `develop` branch and does **not** configure
-any GitHub remote. See [LOCAL_SETUP.md](LOCAL_SETUP.md) to restore the portable
-Git bundle at `/home/alexander/Programmiersprachen/dlang/wikidata-d`.
+- [Wikidata Query Service](https://www.mediawiki.org/wiki/Wikidata_Query_Service/User_Manual)
+- [Wikibase API](https://www.mediawiki.org/wiki/Wikibase/API)
+- [D std.net.curl](https://dlang.org/library/std/net/curl.html)
