@@ -423,3 +423,101 @@ OriginalFormMembership receiptFormMembership(OriginalLexemeReceipt receipt,
     }
     return result;
 }
+
+
+// R1.12-C2: A read-only owner-scoped view of original P5831 statements.
+// Source identity is never inferred from a Form's representation or Sense gloss.
+struct OriginalScopedUsageSource
+{
+    SourceSnapshotRef snapshot;
+    OriginalStatementProof source;
+}
+
+private bool addScopedUsagesFrom(JSONValue holder, string ownerId,
+    SourceSnapshotRef snapshot, ref string[] allIds,
+    ref OriginalScopedUsageSource[] found)
+{
+    auto claims = field(holder, "claims");
+    if (claims is null) return true;
+    if ((*claims).type != JSONType.object) return false;
+    auto list = field(*claims, "P5831");
+    if (list is null) return true;
+    if ((*list).type != JSONType.array) return false;
+    import std.algorithm.searching : startsWith;
+    foreach (statement; (*list).array)
+    {
+        if (statement.type != JSONType.object) return false;
+        string statementId = textField(statement, "id");
+        if (!statementId.startsWith(ownerId ~ "$") ||
+            statementId.length <= ownerId.length + 1) return false;
+        foreach (prior; allIds)
+            if (prior == statementId) return false;
+        allIds ~= statementId;
+        auto main = field(statement, "mainsnak");
+        if (main is null || (*main).type != JSONType.object ||
+            textField(*main, "property") != "P5831") return false;
+        auto refs = field(statement, "references");
+        if (refs !is null && (*refs).type != JSONType.array) return false;
+        OriginalScopedUsageSource record;
+        record.snapshot = snapshot;
+        record.source.ownerId = ownerId;
+        record.source.statementId = statementId;
+        record.source.propertyId = "P5831";
+        record.source.rank = textField(statement, "rank");
+        record.source.snakType = textField(*main, "snaktype");
+        record.source.referenceCount = refs is null ? 0 : (*refs).array.length;
+        record.source.originalStatement = parseJSON(statement.toString());
+        found ~= record;
+    }
+    return true;
+}
+
+/** Source statements come ONLY from the internally reparsed, byte-verified
+ *  OriginalLexemeReceipt. Includes partial, deprecated and unresolved P5831s.
+ *  On malformed/duplicate statement identity, fail the entire enumeration.
+ *  Returned copies carry provenance but are NOT independent source receipts.
+ */
+bool receiptScopedUsageSources(OriginalLexemeReceipt receipt,
+    out OriginalScopedUsageSource[] found)
+{
+    if (!receipt.valid) return false;
+    string[] allIds;
+    if (!addScopedUsagesFrom(receipt.entity.raw, receipt.lexemeId,
+        receipt.source, allIds, found)) { found = null; return false; }
+    auto senses = field(receipt.entity.raw, "senses");
+    if (senses !is null)
+    {
+        if ((*senses).type != JSONType.array) { found = null; return false; }
+        foreach (sense; (*senses).array)
+            if (!addScopedUsagesFrom(sense, textField(sense, "id"),
+                receipt.source, allIds, found)) { found = null; return false; }
+    }
+    auto forms = field(receipt.entity.raw, "forms");
+    if (forms !is null)
+    {
+        if ((*forms).type != JSONType.array) { found = null; return false; }
+        foreach (form; (*forms).array)
+            if (!addScopedUsagesFrom(form, textField(form, "id"),
+                receipt.source, allIds, found)) { found = null; return false; }
+    }
+    return true;
+}
+
+/** Membership in exactly this original snapshot; not an inferred Form/Sense
+ *  relationship and not evidence of the sense's semantic interpretation.
+ */
+bool receiptContainsSenseId(OriginalLexemeReceipt receipt, string senseId)
+{
+    if (!receipt.valid) return false;
+    foreach (sense; receipt.entity.senses)
+        if (sense.id == senseId) return true;
+    return false;
+}
+
+/** Complete source identity, including the original retrieval URL.
+ *  Exposes a COPY of metadata, never the private receipt's entity or batch.
+ */
+SourceSnapshotRef receiptSourceSnapshot(OriginalLexemeReceipt receipt)
+{
+    return receipt.valid ? receipt.source : SourceSnapshotRef.init;
+}
