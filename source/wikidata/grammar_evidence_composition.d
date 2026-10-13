@@ -521,3 +521,57 @@ SourceSnapshotRef receiptSourceSnapshot(OriginalLexemeReceipt receipt)
 {
     return receipt.valid ? receipt.source : SourceSnapshotRef.init;
 }
+
+
+// R1.12-C3: read-only Form representation projection from an authenticated
+// ORIGINAL Lexeme receipt. Retain exact Form IDs, Q-language and raw tags.
+struct OriginalFormRepresentationSource
+{
+    SourceSnapshotRef snapshot;
+    string lexemeId;
+    string lexemeLanguageQId;
+    string formId;
+    string[] originalGrammaticalFeatureIds;
+    size_t originalFormIndex;
+    bool representationsPresent;
+    JSONValue originalRepresentations;
+}
+
+/** The only C3 boundary into the receipt's original Form raw JSON. This
+ *  returns deep copies and never adds implied or generated representations.
+ *  True with an empty result means a verified Lexeme with no Forms.
+ */
+bool receiptOriginalFormRepresentationSources(OriginalLexemeReceipt receipt,
+    out OriginalFormRepresentationSource[] found)
+{
+    found = null;
+    if (!receipt.valid) return false;
+    foreach (i, form; receipt.entity.forms)
+    {
+        OriginalFormRepresentationSource item;
+        item.snapshot = receipt.source;
+        item.lexemeId = receipt.lexemeId;
+        item.lexemeLanguageQId = receipt.entity.languageId;
+        item.formId = form.id;
+        item.originalFormIndex = i;
+        item.originalGrammaticalFeatureIds = form.grammaticalFeatures.dup;
+        auto originals = field(form.raw, "representations");
+        if (originals !is null)
+        {
+            item.representationsPresent = true;
+            // JSONValue containers may share their backing data on copies;
+            // deep-clone before exposing anything from a private receipt.
+            item.originalRepresentations = parseJSON((*originals).toString());
+        }
+        found ~= item;
+    }
+    return true;
+}
+
+/** Returns only the ORIGINAL language Q-ID for a verified Lexeme receipt.
+ *  Unlike a Form-derived language, this also works for a Lexeme with 0 Forms.
+ */
+string receiptLexemeLanguageQId(OriginalLexemeReceipt receipt)
+{
+    return receipt.valid ? receipt.entity.languageId : "";
+}
