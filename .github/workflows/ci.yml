@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compiler-gate:
+    name: Fast / ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - dmd-2.111.0
+          - ldc-1.41.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up D compiler and DUB
+        uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{ matrix.compiler }}
+          dub: 1.40.0
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libcurl4-openssl-dev pkg-config
+
+      - name: Show toolchain
+        run: |
+          "$DC" --version
+          dub --version
+
+      - name: Ensure local catalog/research data are not tracked
+        shell: bash
+        run: |
+          if [[ -n "$(git ls-files -- catalogs/local reports/local)" ]]; then
+            echo 'Local reference catalog or research cache is tracked; stop.' >&2
+            exit 1
+          fi
+
+      - name: Offline Python regression tests (R1.11-B)
+        run: |
+          python3 tools/r1_11b_reference.py
+          python3 tools/r1_11b_graph_inventory.py --self-test
+
+      - name: Offline D unit tests
+        run: dub test --compiler="$DC" --force
+
+      - name: Release configuration build
+        run: dub build --build=release --compiler="$DC" --force
