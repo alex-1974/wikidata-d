@@ -384,3 +384,42 @@ CompositionResult composeComponentTarget(OriginalLexemeReceipt owner,
     result.originalStatements = [component.source];
     return result;
 }
+
+
+/** R1.12-C1: lookup of an ALREADY PRESENT target Form in a byte-verified
+ *  original Lexeme receipt. Never selects, synthesizes or infers a Form.
+ *  The zero-value result means no verified membership.
+ */
+struct OriginalFormMembership
+{
+    bool present;
+    SourceSnapshotRef targetSnapshot;
+    string formId;
+    string originalEvidencePath;
+    @property bool permitsFormSelection() const { return false; }
+    @property bool permitsGrammarProduction() const { return false; }
+}
+
+/** Membership only; even a sole Form does not imply a missing P5548 link.
+ *  Form IDs remain distinct regardless of identical representations.
+ */
+OriginalFormMembership receiptFormMembership(OriginalLexemeReceipt receipt,
+    string formId)
+{
+    OriginalFormMembership result;
+    if (!receipt.valid) return result;
+    result.targetSnapshot = receipt.source;
+    foreach (i, form; receipt.entity.forms)
+    {
+        if (form.id == formId)
+        {
+            import std.conv : to;
+            result.present = true;
+            result.formId = formId;
+            result.originalEvidencePath = "entities." ~ receipt.source.lexemeId ~
+                ".forms[" ~ to!string(i) ~ "]";
+            return result;
+        }
+    }
+    return result;
+}
