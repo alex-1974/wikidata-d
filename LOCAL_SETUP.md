@@ -49,4 +49,4 @@ Develop changes on a branch off `develop`; propose them back to `develop` throug
 
 Do not commit copyrighted external wordlists, personal research caches, or generated Wikidata responses unless their source, provenance, and distribution rights have been reviewed. The application keeps complete reference catalogues independent of the presence or absence of Wikidata matches.
 
-For architecture and current scope, see the [README](README.md) and [R1.11-D1 evidence-only facet contract](docs/R1-11-D1-FACET-CONTRACT.md).
+For architecture and current scope, see the [README](README.md) and [core production boundary](README.md).
