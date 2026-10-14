@@ -1,7 +1,14 @@
 {
   "name": "wikidata-d",
-  "description": "Small, GUI-independent Wikidata SPARQL and entity client",
+  "description": "Lean D library for Wikidata clients, Lexemes, catalogues and exact matching",
   "targetType": "library",
-  "sourcePaths": ["source"],
-  "libs": ["curl"]
+  "sourcePaths": [
+    "source"
+  ],
+  "libs": [
+    "curl"
+  ],
+  "importPaths": [
+    "source"
+  ]
 }

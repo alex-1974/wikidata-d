@@ -49,10 +49,10 @@ jobs:
             exit 1
           fi
 
-      - name: Offline Python regression tests (R1.11-B)
+      - name: Enforce lean release boundary
         run: |
-          python3 tools/r1_11b_reference.py
-          python3 tools/r1_11b_graph_inventory.py --self-test
+          python3 tools/check_release_boundary.py --self-test
+          python3 tools/check_release_boundary.py
 
       - name: Offline D unit tests
         run: dub test --compiler="$DC" --force
