@@ -31,4 +31,8 @@ The release and develop GitHub workflows enforce this source boundary.
 
 Do not run the live network examples without a real identifying User-Agent.
 
+For the bounded R1.14 memory-ownership, failure and single-writer cache
+contracts see [API_CONTRACTS.md](docs/API_CONTRACTS.md). This does **not**
+constitute an API freeze.
+
 For local setup see [LOCAL_SETUP.md](LOCAL_SETUP.md).
