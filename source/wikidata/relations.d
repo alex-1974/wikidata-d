@@ -14,7 +14,19 @@ import std.algorithm.searching : startsWith;
 
 import wikidata.query : isEntityId, sparqlString;
 
-/// Validate a Wikidata Sense subentity ID (e.g. L5577-S1).
+/**
+ * Check whether text has the syntax of a Wikidata Sense identifier.
+ *
+ * Use this to reject malformed input before composing a Sense-relations
+ * query. No request is made and existence is not verified.
+ *
+ * Params:
+ *   id = Candidate identifier, such as $(D "L5577-S1").
+ * Returns: $(D true) for an L-number-S-number identifier with positive
+ *          decimal numbers and no extra characters; otherwise $(D false).
+ * Notes: This function does not accept Form IDs such as $(D "L5577-F1").
+ * See_Also: buildSenseRelationsQuery, parseSenseRelations
+ */
 bool isSenseId(string id)
 {
     if (id.length < 4 || id[0] != 'L')
@@ -36,43 +48,52 @@ bool isSenseId(string id)
 }
 
 /**
- * A relation from the requested Sense to another Sense, with the target
- * Lexeme and its language. `propertyId` identifies the exact Wikidata
- * relation: P5137, P9970, P5972, P5973, or P5974.
+ * One directed or shared Wikidata relationship involving a source Sense.
  *
- * `viaId` is the shared concept/predicate Q-ID when applicable.
- * `direction` is "shared", "outgoing", or "incoming".
- * The raw SPARQL binding row is retained verbatim.
+ * Use the property ID together with $(D direction) to interpret this edge;
+ * it is not automatically an approved translation. The full SPARQL binding
+ * remains available through $(D raw) for further inspection.
+ *
+ * Shared P5137 concept and P9970 predicate relationships carry a Q-item
+ * in $(D viaId). Direct P5972, P5973 and P5974 relationships retain the
+ * actual stored incoming or outgoing direction instead.
+ * Notes: A relation does not assign vocabulary level or catalogue coverage.
+ * See_Also: parseSenseRelations, buildSenseRelationsQuery
  */
 struct SenseRelation
 {
-    string sourceSenseId;
-    string targetSenseId;
-    string targetLexemeId;
-    string targetLemma;
-    string targetLanguageId;
-    string targetCategoryId;
-    string propertyId;
-    string direction;
-    string viaId;
-    JSONValue raw;
+    string sourceSenseId; /// Requested starting Sense ID.
+    string targetSenseId; /// Related Sense ID returned by Wikidata.
+    string targetLexemeId; /// Lexeme owning the related Sense.
+    string targetLemma; /// Written lemma of the target Lexeme.
+    string targetLanguageId; /// Wikidata language Q-ID of the target Lexeme.
+    string targetCategoryId; /// Wikidata lexical-category Q-ID of the target Lexeme.
+    string propertyId; /// Relation property ID, such as P5137 or P5972.
+    string direction; /// Relation direction: shared, outgoing or incoming.
+    string viaId; /// Shared concept or predicate Q-ID; empty for a direct relation.
+    JSONValue raw; /// Original SPARQL binding row, including additional fields.
 }
 
 /**
- * Generate a bounded Wikidata Query Service query for the immediate
- * neighbours of one Sense. No transitive graph traversal is performed.
+ * Build a bounded SPARQL query for nearby relationships of one Sense.
  *
- * Relations included:
- * - P5137: two Senses share a Q concept (translation candidate only);
- * - P9970: two Senses share a predicate Q concept (semantic peer);
- * - P5972: direct translation (both stored edge directions);
- * - P5973: synonym (both stored directions);
- * - P5974: antonym (both stored directions).
+ * Use the resulting text with your Wikidata query client, then pass a
+ * successful complete JSON response to $(D parseSenseRelations).
+ * The query includes shared P5137 concepts, shared P9970 predicates,
+ * and direct P5972 translations, P5973 synonyms and P5974 antonyms in
+ * both stored edge directions. Such results are relationship candidates,
+ * not a verified translation dictionary. No HTTP request occurs here.
  *
- * `targetLanguageId` may be empty to include all languages.
- * `limit` caps rows, not distinct Lexemes; callers must treat a full result
- * page as potentially truncated. Use a language constraint or later paging
- * for exhaustive collection.
+ * Params:
+ *   sourceSenseId = Starting Wikidata Sense ID (e.g. $(D "L5577-S1")).
+ *   targetLanguageId = Optional target language Q-ID; empty includes all.
+ *   limit = Maximum result rows from 1 to 1000 (default 100).
+ * Returns: SPARQL query text for immediate Sense neighbours.
+ * Throws: $(D Exception) for invalid Sense or language IDs, or limits
+ *         outside the permitted range.
+ * Notes: The limit counts rows, not distinct target Lexemes. A full page
+ *        can be truncated; this function has no paging or transitive walk.
+ * See_Also: isSenseId, parseSenseRelations, SenseRelation
  */
 string buildSenseRelationsQuery(
     string sourceSenseId,
@@ -135,6 +156,41 @@ string buildSenseRelationsQuery(
     return query;
 }
 
+
+///
+unittest
+{
+    import std.algorithm.searching : canFind;
+    import std.exception : assertThrown;
+    // Syntactic checks do not contact Wikidata or establish existence.
+    assert(isSenseId("L5577-S1"));
+    assert(!isSenseId("L5577-F1"));
+
+    // Ask for immediate relationships of one Sense in one target language.
+    auto query = buildSenseRelationsQuery("L5577-S1", "Q188", 25);
+    assert(query.canFind("FILTER(?language = wd:Q188)"));
+    assert(query.canFind("LIMIT 25"));
+    assertThrown!Exception(buildSenseRelationsQuery("L5577-S0"));
+
+    // Parse an offline response; the result remains a candidate, not proof
+    // of translation equivalence or a catalogue-level assignment.
+    auto sample = parseJSON(`{"results":{"bindings":[{
+      "relation":{"value":"P5137"},"direction":{"value":"shared"},
+      "via":{"value":"http://www.wikidata.org/entity/Q146"},
+      "targetSense":{"value":"http://www.wikidata.org/entity/L100-S2"},
+      "lexeme":{"value":"http://www.wikidata.org/entity/L100"},
+      "lemma":{"value":"Katze"},
+      "language":{"value":"http://www.wikidata.org/entity/Q188"},
+      "category":{"value":"http://www.wikidata.org/entity/Q1084"}
+    }]}}`);
+    auto edges = parseSenseRelations(sample, "L5577-S1");
+    assert(edges.length == 1);
+    assert(edges[0].propertyId == "P5137");
+    assert(edges[0].direction == "shared" && edges[0].viaId == "Q146");
+    assert(edges[0].targetSenseId == "L100-S2");
+}
+
+/// Read a required or optional string value from one SPARQL binding term.
 private string valueAt(JSONValue row, string key, bool optional = false)
 {
     enforce(row.type == JSONType.object, "Invalid SPARQL result row");
@@ -149,6 +205,7 @@ private string valueAt(JSONValue row, string key, bool optional = false)
     return (*v).str;
 }
 
+/// Extract an identifier from an HTTP(S) Wikidata entity URI.
 private string idFromUri(string uri)
 {
     enum prefix = "http://www.wikidata.org/entity/";
@@ -160,7 +217,25 @@ private string idFromUri(string uri)
     throw new Exception("Not a Wikidata entity URI: " ~ uri);
 }
 
-/** Parse SPARQL JSON bindings into typed, provenance-preserving edges. */
+/**
+ * Convert a successful SPARQL JSON response into typed Sense relationships.
+ *
+ * Use this with the JSON result of $(D buildSenseRelationsQuery). The parser
+ * retains each returned relation's property, direction, target identifiers
+ * and complete original binding row. It does not verify the meaning of a
+ * relation, infer translations or fetch additional data.
+ *
+ * Params:
+ *   result = SPARQL JSON object with $(D results.bindings) rows.
+ *   sourceSenseId = Source Sense ID associated with the request.
+ * Returns: Relations in the supplied binding order; an empty valid bindings
+ *          array produces an empty array of relationships.
+ * Throws: $(D Exception) for malformed structure, invalid entity IDs,
+ *         direction values or missing shared-relation concept IDs.
+ * Notes: Network and endpoint errors must be handled before calling this
+ *        parser; they are not equivalent to a successful empty result.
+ * See_Also: buildSenseRelationsQuery, SenseRelation, isSenseId
+ */
 SenseRelation[] parseSenseRelations(JSONValue result, string sourceSenseId)
 {
     enforce(isSenseId(sourceSenseId), "Expected a Wikidata Sense ID");
