@@ -10,49 +10,78 @@ module wikidata.lexeme;
 import std.exception : enforce;
 import std.json : JSONType, JSONValue, parseJSON;
 
-/// A statement and its complete original Wikibase JSON, including qualifiers,
-/// references, snak type, value, and rank.
+/**
+ * A Wikibase statement with its original JSON retained.
+ *
+ * Use $(D propertyId) to identify the property, $(D targetId) when its main
+ * value is an entity ID, and $(D raw) for qualifiers, references, rank and
+ * value details. An empty target ID does not mean that no value exists.
+ * Notes: Copying this struct does not promise a deep copy of JSON values.
+ * See_Also: readStatements
+ */
 struct WikidataStatement
 {
-    string propertyId;
-    string targetId; // Present only when the main value contains an entity ID.
-    JSONValue raw;
+    string propertyId; /// Statement property identifier (for example, P5137).
+    string targetId;   /// Main-value entity ID, or empty for other value kinds.
+    JSONValue raw;     /// Complete original statement JSON.
 }
 
-/// One Wikidata Form; representations remain available in the raw JSON.
+/**
+ * A Form belonging to one Wikidata Lexeme.
+ *
+ * Identifiers and grammatical feature IDs are available directly. Written
+ * representations and other original fields remain in $(D raw).
+ * Notes: This is not a Sense or a translation.
+ * See_Also: WikidataLexeme, parseLexeme
+ */
 struct WikidataForm
 {
-    string id;
-    string[] grammaticalFeatures;
-    WikidataStatement[] statements;
-    JSONValue raw;
+    string id; /// Original Form identifier, such as L5577-F1.
+    string[] grammaticalFeatures; /// Wikidata grammatical-feature entity IDs.
+    WikidataStatement[] statements; /// Statements attached to this Form.
+    JSONValue raw; /// Complete original Form JSON including representations.
 }
 
-/// One Wikidata Sense; multilingual glosses remain available in the raw JSON.
+/**
+ * A Sense belonging to one Lexeme, not an inflected Form.
+ *
+ * Consult $(D raw) for original multilingual glosses and properties not
+ * projected into the typed fields. The parser does not verify translations.
+ * See_Also: WikidataLexeme, parseLexeme
+ */
 struct WikidataSense
 {
-    string id;
-    WikidataStatement[] statements;
-    JSONValue raw;
+    string id; /// Original Sense identifier, such as L5577-S1.
+    WikidataStatement[] statements; /// Statements attached to this Sense.
+    JSONValue raw; /// Complete original Sense JSON, including multilingual glosses.
 }
 
-/// An individual Wikidata Lexeme, not a collapsed spelling or translation.
+/**
+ * A single Wikidata Lexeme with its Forms, Senses and original data.
+ *
+ * Use this to inspect the distinct Lexeme, Form and Sense identifiers while
+ * retaining the source JSON in $(D raw). No catalogue entry is changed.
+ * Notes: JSON and array members do not gain deep-copy isolation on struct copy.
+ * See_Also: parseLexeme, WikidataForm, WikidataSense
+ */
 struct WikidataLexeme
 {
-    string id;
-    string languageId;
-    string lexicalCategoryId;
-    WikidataForm[] forms;
-    WikidataSense[] senses;
-    WikidataStatement[] statements;
-    JSONValue raw;
+    string id; /// Original Wikidata Lexeme ID.
+    string languageId; /// Language item ID returned by Wikidata.
+    string lexicalCategoryId; /// Lexical-category item ID returned by Wikidata.
+    WikidataForm[] forms; /// Separate Forms belonging to this Lexeme.
+    WikidataSense[] senses; /// Separate Senses belonging to this Lexeme.
+    WikidataStatement[] statements; /// Lexeme-level statements.
+    JSONValue raw; /// Complete original Lexeme JSON, including unknown fields.
 }
 
+/// Require a JSON object and report a descriptive validation error.
 private void requireObject(JSONValue value, string description)
 {
     enforce(value.type == JSONType.object, description ~ " must be a JSON object");
 }
 
+/// Read a required string field from a JSON object.
 private string requireString(JSONValue value, string key)
 {
     requireObject(value, "Entity");
@@ -62,6 +91,7 @@ private string requireString(JSONValue value, string key)
     return (*field).str;
 }
 
+/// Return an optional JSON array, rejecting malformed present values.
 private JSONValue[] optionalArray(JSONValue value, string key)
 {
     requireObject(value, "Entity");
@@ -73,6 +103,7 @@ private JSONValue[] optionalArray(JSONValue value, string key)
     return (*field).array;
 }
 
+/// Read the entity ID in a statement main value, when present.
 private string statementTarget(JSONValue statement)
 {
     auto mainsnak = "mainsnak" in statement.object;
@@ -90,7 +121,20 @@ private string statementTarget(JSONValue statement)
     return (*id).str;
 }
 
-/// Extract all statements without limiting the set of recognized properties.
+/**
+ * Read every statement from an entity's claims object.
+ *
+ * Use this to inspect all properties without restricting the property set.
+ * The original statement JSON is retained, including unknown details.
+ *
+ * Params:
+ *   entity = A Lexeme, Form, Sense or other JSON object containing claims.
+ * Returns: Statements found in claims, or an empty array if claims is absent.
+ * Throws: $(D Exception) if the entity, claims or statement-group structure
+ *         is malformed.
+ * Notes: Only entity-valued main values expose a nonempty targetId.
+ * See_Also: WikidataStatement, parseLexeme
+ */
 WikidataStatement[] readStatements(JSONValue entity)
 {
     requireObject(entity, "Entity");
@@ -115,10 +159,21 @@ WikidataStatement[] readStatements(JSONValue entity)
 }
 
 /**
- * Decode a full Lexeme entity returned by Wikidata's wbgetentities API.
+ * Parse one Wikidata Lexeme entity into typed fields and preserved source JSON.
  *
- * Parameters: entity = the individual JSON entity, not the enclosing
- *                        {"entities": {"L123": ...}} API response.
+ * Pass the individual Lexeme object returned by wbgetentities, not the
+ * enclosing $(D entities) response. This operation is local and makes no
+ * network request. Forms and Senses remain separate and retain original IDs.
+ *
+ * Params:
+ *   entity = Parsed JSON object for one Lexeme.
+ * Returns: A WikidataLexeme with typed IDs, Forms, Senses and statements.
+ * Throws: $(D Exception) when the Lexeme is missing or required fields and
+ *         nested structures have invalid shapes.
+ * Notes: Unknown fields remain in raw; this parser does not infer missing
+ *        Forms, Senses, translations or grammatical facts. A struct copy is
+ *        not a deep-copy guarantee for arrays or JSON values.
+ * See_Also: WikidataLexeme, readStatements, parseLexeme
  */
 WikidataLexeme parseLexeme(JSONValue entity)
 {
@@ -163,10 +218,38 @@ WikidataLexeme parseLexeme(JSONValue entity)
     return result;
 }
 
-/// Handy overload when working with a serialized standalone entity.
+/**
+ * Parse the JSON text of one standalone Wikidata Lexeme entity.
+ *
+ * Params:
+ *   jsonText = Serialized Lexeme object, not a complete API envelope.
+ * Returns: A typed Lexeme with original JSON preserved.
+ * Throws: $(D Exception) for invalid Lexeme data; JSON parsing may throw
+ *         on malformed JSON text.
+ * Notes: This operation does not fetch a Lexeme from Wikidata.
+ * See_Also: parseLexeme
+ */
 WikidataLexeme parseLexeme(string jsonText)
 {
     return parseLexeme(parseJSON(jsonText));
+}
+
+///
+unittest
+{
+    // A compact offline Lexeme with a Form and an independently identified Sense.
+    auto lexeme = parseLexeme(`{
+      "id":"L42", "language":"Q652", "lexicalCategory":"Q1084",
+      "forms":[{"id":"L42-F1","grammaticalFeatures":[],"representations":{}}],
+      "senses":[{"id":"L42-S1","glosses":{}}], "futureField":17
+    }`);
+    assert(lexeme.id == "L42");
+    assert(lexeme.forms[0].id == "L42-F1");
+    assert(lexeme.senses[0].id == "L42-S1");
+    assert(lexeme.raw["futureField"].integer == 17); // Unknown source fields survive.
+
+    // Missing claims are an ordinary empty result, not an invented statement.
+    assert(readStatements(parseJSON(`{"id":"L42"}`)).length == 0);
 }
 
 unittest
