@@ -35,6 +35,6 @@ For the bounded R1.14 memory-ownership, failure and single-writer cache
 contracts see [API_CONTRACTS.md](docs/API_CONTRACTS.md). This does **not**
 constitute an API freeze.
 
-R1.14-K proposes a [source-API stability policy](docs/API_STABILITY_PROPOSAL.md) for review; it is **not an approved API freeze or release**.
+R1.14-L documents the [internal v0.1.x source-API compatibility decision](docs/API_STABILITY.md). This policy becomes active **only after a separately signed internal API-freeze tag**; it is not a DUB release.
 
 For local setup see [LOCAL_SETUP.md](LOCAL_SETUP.md).
