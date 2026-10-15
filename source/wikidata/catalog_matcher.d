@@ -117,7 +117,9 @@ CatalogMatch[] matchCatalogWithCategories(
 {
     enforce(batches.length == responses.length,
         "One complete response is required per query batch");
-    SearchHit[] hits;
+    // Fail closed before computing matches. No result can be returned after a
+    // malformed later batch, and no synthetic missing-lemma state is produced.
+    // This pass retains only the already parsed JSONValue response graph.
     foreach (n, response; responses)
     {
         enforce(response.type == JSONType.object, "Invalid SPARQL response");
@@ -129,39 +131,94 @@ CatalogMatch[] matchCatalogWithCategories(
             "Missing SPARQL bindings");
         foreach (row; (*bindings).array)
         {
-            SearchHit hit;
-            hit.lemma = bindingValue(row, "lemma");
-            enforce(batches[n].lemmas.canFind(hit.lemma),
+            auto lemma = bindingValue(row, "lemma");
+            enforce(batches[n].lemmas.canFind(lemma),
                 "Result lemma not requested by this batch");
-            hit.candidate.lexemeId = entityId(bindingValue(row, "lexeme"));
-            hit.candidate.lexicalCategoryId = entityId(
-                bindingValue(row, "category"));
+            auto lexemeId = entityId(bindingValue(row, "lexeme"));
+            auto lexicalCategoryId = entityId(bindingValue(row, "category"));
             auto sense = bindingValue(row, "sense", true);
+            string senseId;
             if (sense.length)
-                hit.candidate.senseIds = [entityId(sense)];
-            enforce(isEntityId(hit.candidate.lexemeId) &&
-                hit.candidate.lexemeId[0] == 'L', "Invalid Lexeme ID");
-            enforce(isEntityId(hit.candidate.lexicalCategoryId) &&
-                hit.candidate.lexicalCategoryId[0] == 'Q', "Invalid POS ID");
-            if (hit.candidate.senseIds.length)
-                enforce(isSenseId(hit.candidate.senseIds[0]),
-                    "Invalid Sense ID");
-            hits ~= hit;
+                senseId = entityId(sense);
+            enforce(isEntityId(lexemeId) && lexemeId[0] == 'L',
+                "Invalid Lexeme ID");
+            enforce(isEntityId(lexicalCategoryId) && lexicalCategoryId[0] == 'Q',
+                "Invalid POS ID");
+            if (senseId.length)
+                enforce(isSenseId(senseId), "Invalid Sense ID");
         }
     }
 
-    CatalogMatch[] matches;
-    foreach (entry; catalog.entries)
+    // Preserve the full validation-first contract above. Each lemma owns
+    // an insertion-ordered chain of catalogue entries, stored as links in
+    // one contiguous array instead of an allocated array per lemma.
+    struct EntryLink
     {
-        CatalogMatch match;
-        match.catalogEntryId = entry.id;
-        foreach (hit; hits)
+        size_t entryIndex;
+        size_t next;
+    }
+    struct LemmaChain
+    {
+        size_t first;
+        size_t last;
+    }
+    size_t maxLinks;
+    foreach (entry; catalog.entries)
+        maxLinks += entry.lookupTargets.length;
+    EntryLink[] links;
+    links.length = maxLinks;
+    size_t linkCount;
+    LemmaChain[string] entriesByLemma;
+    foreach (entryIndex, entry; catalog.entries)
+        foreach (target; entry.lookupTargets)
         {
-            // POS restrictions apply to each lookup variant independently.
-            // Do not discard the source entry if one variant is unmatched.
+            auto chain = target.lemma in entriesByLemma;
+            if (chain is null)
+            {
+                links[linkCount] = EntryLink(entryIndex, size_t.max);
+                entriesByLemma[target.lemma] = LemmaChain(linkCount, linkCount);
+                ++linkCount;
+            }
+            else if (links[(*chain).last].entryIndex != entryIndex)
+            {
+                links[linkCount] = EntryLink(entryIndex, size_t.max);
+                links[(*chain).last].next = linkCount;
+                (*chain).last = linkCount;
+                ++linkCount;
+            }
+        }
+
+    // Preallocate the complete result array. Missing lemmas never remove or
+    // reorder source entries, and SPARQL bindings are visited in source order.
+    CatalogMatch[] matches;
+    matches.length = catalog.entries.length;
+    foreach (entryIndex, entry; catalog.entries)
+        matches[entryIndex].catalogEntryId = entry.id;
+
+    foreach (response; responses)
+        foreach (row; response["results"]["bindings"].array)
+        {
+            SearchHit hit;
+            hit.lemma = bindingValue(row, "lemma");
+            hit.candidate.lexemeId = entityId(bindingValue(row, "lexeme"));
+            hit.candidate.lexicalCategoryId = entityId(bindingValue(row, "category"));
+            // Separate name from the later foreach(sense; candidate.senseIds).
+            // DMD 2.111 rejects same-function lexical shadowing.
+            auto senseBinding = bindingValue(row, "sense", true);
+            if (senseBinding.length)
+                hit.candidate.senseIds = [entityId(senseBinding)];
+        auto chain = hit.lemma in entriesByLemma;
+        if (chain is null)
+            continue;
+        for (size_t link = (*chain).first; link != size_t.max;
+            link = links[link].next)
+        {
+            const entryIndex = links[link].entryIndex;
+            auto match = &matches[entryIndex];
+            // Preserve per-variant POS and exact-over-subclass precedence.
             bool targetMatches = false;
             string matchMethod;
-            foreach (target; entry.lookupTargets)
+            foreach (target; catalog.entries[entryIndex].lookupTargets)
             {
                 if (target.lemma != hit.lemma)
                     continue;
@@ -204,13 +261,15 @@ CatalogMatch[] matchCatalogWithCategories(
                         match.candidates[index].senseIds ~= sense;
             }
         }
+    }
+    foreach (ref match; matches)
+    {
         if (match.candidates.length == 1)
             match.status = CatalogMatchStatus.matched;
         else if (match.candidates.length > 1)
             match.status = CatalogMatchStatus.multipleCandidates;
         else
             match.status = CatalogMatchStatus.noMatch;
-        matches ~= match;
     }
     return matches;
 }
@@ -332,4 +391,63 @@ unittest
     assert(extended[0].candidates[0].matchMethod == "subclass");
     assert(extended[0].candidates[0].senseIds == ["L101-S1"]);
     assert(extended[1].status == CatalogMatchStatus.noMatch);
+}
+
+// R1.14 production regression: reverse dispatch preserves complete results,
+// per-entry deduplication, source order, exact POS and Sense order.
+unittest
+{
+    import wikidata.catalog : parseCatalog;
+    import std.exception : assertThrown;
+    auto catalog = parseCatalog(`{
+      "schemaVersion":1,"id":"index-edge","languageCode":"it",
+      "languageEntityId":"Q652","level":"test","source":{},
+      "entries":[
+        {"id":"both","lemma":"uno","lookupTargets":[
+          {"lemma":"uno","lexicalCategoryId":"Q1084"},
+          {"lemma":"uno","lexicalCategoryId":"Q34698"},
+          {"lemma":"uno","lexicalCategoryId":"Q1084"},
+          {"lemma":"due","lexicalCategoryId":"Q1084"}]},
+        {"id":"noun","lemma":"uno","lexicalCategoryId":"Q1084"},
+        {"id":"absent","lemma":"assente","lexicalCategoryId":"Q1084"}
+      ]}`);
+    auto batches = buildCatalogLookupBatches(catalog, 1);
+    assert(batches.length == 3);
+    JSONValue[] answers = [
+      parseJSON(`{"results":{"bindings":[
+        {"lemma":{"value":"uno"},"lexeme":{"value":"http://www.wikidata.org/entity/L1"},
+         "category":{"value":"http://www.wikidata.org/entity/Q34698"},
+         "sense":{"value":"http://www.wikidata.org/entity/L1-S2"}},
+        {"lemma":{"value":"uno"},"lexeme":{"value":"http://www.wikidata.org/entity/L2"},
+         "category":{"value":"http://www.wikidata.org/entity/Q1084"},
+         "sense":{"value":"http://www.wikidata.org/entity/L2-S1"}},
+        {"lemma":{"value":"uno"},"lexeme":{"value":"http://www.wikidata.org/entity/L1"},
+         "category":{"value":"http://www.wikidata.org/entity/Q34698"},
+         "sense":{"value":"http://www.wikidata.org/entity/L1-S1"}}
+      ]}}`),
+      parseJSON(`{"results":{"bindings":[
+        {"lemma":{"value":"due"},"lexeme":{"value":"http://www.wikidata.org/entity/L3"},
+         "category":{"value":"http://www.wikidata.org/entity/Q1084"}}
+      ]}}`),
+      parseJSON(`{"results":{"bindings":[]}}`)
+    ];
+    auto result = matchCatalog(catalog, batches, answers);
+    assert(result.length == 3);
+    assert(result[0].catalogEntryId == "both");
+    assert(result[0].status == CatalogMatchStatus.multipleCandidates);
+    assert(result[0].candidates.length == 3);
+    assert(result[0].candidates[0].lexemeId == "L1");
+    assert(result[0].candidates[0].senseIds == ["L1-S2", "L1-S1"]);
+    assert(result[0].candidates[1].lexemeId == "L2");
+    assert(result[0].candidates[2].lexemeId == "L3");
+    assert(result[1].catalogEntryId == "noun");
+    assert(result[1].status == CatalogMatchStatus.matched);
+    assert(result[1].candidates.length == 1);
+    assert(result[1].candidates[0].lexemeId == "L2");
+    assert(result[2].catalogEntryId == "absent");
+    assert(result[2].status == CatalogMatchStatus.noMatch);
+    assert(result[2].candidates.length == 0);
+    // A broken later batch is not interpreted as a no-hit batch.
+    answers[2] = parseJSON(`{"results":{}}`);
+    assertThrown!Exception(matchCatalog(catalog, batches, answers));
 }
