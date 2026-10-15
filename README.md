@@ -38,3 +38,11 @@ constitute an API freeze.
 R1.14-L documents the [internal v0.1.x source-API compatibility decision](docs/API_STABILITY.md). This policy becomes active **only after a separately signed internal API-freeze tag**; it is not a DUB release.
 
 For local setup see [LOCAL_SETUP.md](LOCAL_SETUP.md).
+
+## Development acknowledgement
+
+Assisted by AI.
+
+The library has been developed and reviewed with assistance from multiple AI
+systems and models. API compatibility, source correctness and release decisions
+remain subject to maintainer review and the repository's verification gates.
