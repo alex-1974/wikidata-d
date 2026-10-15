@@ -28,6 +28,8 @@ def inspect(root: Path) -> dict:
     cfg = json.loads((root / 'dub.json').read_text('utf-8'))
     if cfg.get('sourcePaths') != ['source'] or cfg.get('targetType') != 'library':
         raise ValueError('Unexpected DUB sourcePaths/targetType')
+    if (root / 'research').exists():
+        raise ValueError('Research fixtures must be stored in wikidata-d-research, not the release repository')
     examples = root / 'examples'
     if not examples.is_dir():
         raise ValueError('Production examples directory missing')
@@ -74,7 +76,15 @@ def selftest():
         else: raise AssertionError('Research import accepted')
         c.write_text('module wikidata.client;\n')
         assert inspect(root)['sourceCount'] == 10
-        print('PASS: 3/3 core-boundary synthetic tests')
+        legacy = root / 'research'
+        legacy.mkdir()
+        (legacy/'obsolete.json').write_text('{}')
+        try: inspect(root)
+        except ValueError: pass
+        else: raise AssertionError('Root research fixtures accepted')
+        (legacy/'obsolete.json').unlink()
+        legacy.rmdir()
+        print('PASS: 4/4 core-boundary synthetic tests')
 
 
 def main():
