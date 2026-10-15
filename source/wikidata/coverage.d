@@ -77,8 +77,20 @@ CoverageReport buildCoverageReport(
     enforce(matches.length == catalog.entries.length,
         "Every source entry requires exactly one mapping result");
 
-    struct Hit { string lemma; string category; }
-    Hit[] hits;
+    // Research F2-B: validation-first compact category observation chains.
+    // The one contiguous array contains only category and next-index data.
+    struct CategoryHit
+    {
+        string category;
+        size_t next;
+    }
+    struct LemmaChain
+    {
+        size_t first;
+        size_t last;
+    }
+    LemmaChain[string] categoryChains;
+    size_t validHitCount;
     foreach (i, response; responses)
     {
         enforce(response.type == JSONType.object, "Invalid SPARQL response");
@@ -93,9 +105,31 @@ CoverageReport buildCoverageReport(
             auto lemma = bindingValue(row, "lemma");
             enforce(batches[i].lemmas.canFind(lemma),
                 "SPARQL result lemma was not requested");
-            hits ~= Hit(lemma, qId(bindingValue(row, "category")));
+            qId(bindingValue(row, "category"));
+            ++validHitCount;
         }
     }
+
+    CategoryHit[] categoryHits;
+    categoryHits.length = validHitCount;
+    size_t nextHit;
+    foreach (response; responses)
+        foreach (row; response["results"]["bindings"].array)
+        {
+            auto lemma = bindingValue(row, "lemma");
+            auto category = qId(bindingValue(row, "category"));
+            const hitIndex = nextHit++;
+            categoryHits[hitIndex] = CategoryHit(category, size_t.max);
+            auto chain = lemma in categoryChains;
+            if (chain is null)
+                categoryChains[lemma] = LemmaChain(hitIndex, hitIndex);
+            else
+            {
+                categoryHits[(*chain).last].next = hitIndex;
+                (*chain).last = hitIndex;
+            }
+        }
+    assert(nextHit == validHitCount);
 
     CoverageReport report;
     report.catalogId = catalog.id;
@@ -122,13 +156,19 @@ CoverageReport buildCoverageReport(
             entry.candidates ~= copy;
         }
         foreach (target; sourceEntry.lookupTargets)
-            foreach (hit; hits)
-                if (target.lemma == hit.lemma)
-                {
-                    entry.anyLemmaHit = true;
-                    if (!entry.observedCategories.canFind(hit.category))
-                        entry.observedCategories ~= hit.category;
-                }
+        {
+            auto chain = target.lemma in categoryChains;
+            if (chain is null)
+                continue;
+            for (size_t hitIndex = (*chain).first;
+                hitIndex != size_t.max; hitIndex = categoryHits[hitIndex].next)
+            {
+                const category = categoryHits[hitIndex].category;
+                entry.anyLemmaHit = true;
+                if (!entry.observedCategories.canFind(category))
+                    entry.observedCategories ~= category;
+            }
+        }
         final switch (entry.status)
         {
             case CatalogMatchStatus.matched:
