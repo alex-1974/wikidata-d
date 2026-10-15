@@ -9,35 +9,55 @@ import std.file : readText;
 import std.json : JSONValue, JSONType, parseJSON;
 import wikidata.query : isEntityId;
 
-/// One exact Wikidata Lexeme search target derived from one catalogue entry.
-/// Multiple targets never split or replace the original catalogue record.
+/**
+ * One exact lookup spelling and optional part-of-speech restriction.
+ *
+ * A catalogue entry may supply several targets while remaining one record.
+ * The ID describes the expected Wikidata category, not a verified match.
+ * See_Also: CatalogEntry, parseCatalog
+ */
 struct CatalogLookupTarget
 {
-    string lemma;
-    string lexicalCategoryId;  /// Optional POS restriction, Wikidata Q-ID.
+    string lemma; /// Exact spelling to search in Wikidata.
+    string lexicalCategoryId; /// Optional expected Wikidata POS Q-ID.
 }
 
+/**
+ * An original source-catalogue entry and its independent lookup targets.
+ *
+ * Use raw for source metadata and lookupTargets for Lexeme searches.
+ * Several targets do not split, delete or replace this entry.
+ * See_Also: VocabularyCatalog, CatalogLookupTarget
+ */
 struct CatalogEntry
 {
-    string id;                  /// Stable ID from this catalogue.
-    string lemma;               /// Original source spelling.
-    string lexicalCategoryId;   /// Optional Wikidata POS Q-ID.
-    string[] lookupLemmas;      /// Legacy search strings retained for M4 consumers.
-    CatalogLookupTarget[] lookupTargets; /// Searches with per-variant POS.
-    JSONValue raw;              /// All original source fields.
+    string id; /// Stable identifier assigned by the source catalogue.
+    string lemma; /// Original source spelling, unchanged by lookup.
+    string lexicalCategoryId; /// Optional entry-level Wikidata POS Q-ID.
+    string[] lookupLemmas; /// Search spellings retained for existing consumers.
+    CatalogLookupTarget[] lookupTargets; /// Searches and optional per-variant POS.
+    JSONValue raw; /// Complete original catalogue-entry JSON.
 }
 
+/**
+ * Complete independent vocabulary catalogue for any language and level.
+ *
+ * Every source entry remains present regardless of Wikidata coverage.
+ * The source metadata and complete original document are preserved.
+ * See_Also: parseCatalog, loadCatalog
+ */
 struct VocabularyCatalog
 {
-    string id;
-    string languageCode;        /// For lemma literals (it, de, sw, etc.).
-    string languageEntityId;    /// Wikidata language Q-ID.
-    string level;               /// A1, A2, ...
-    JSONValue source;           /// Origin/rights/version info, as supplied.
-    CatalogEntry[] entries;
-    JSONValue raw;              /// Full original document.
+    string id; /// Catalogue identifier from the original document.
+    string languageCode; /// Language tag for lemma literals, such as it or sw.
+    string languageEntityId; /// Wikidata language item Q-ID.
+    string level; /// Source learning level, such as A1 or A2.
+    JSONValue source; /// Source metadata exactly as supplied.
+    CatalogEntry[] entries; /// All catalogue entries in source order.
+    JSONValue raw; /// Full original catalogue JSON.
 }
 
+/// Return a mandatory JSON field or reject a missing field.
 private JSONValue required(JSONValue obj, string key)
 {
     enforce(obj.type == JSONType.object, "Expected JSON object");
@@ -46,6 +66,7 @@ private JSONValue required(JSONValue obj, string key)
     return *value;
 }
 
+/// Return a required nonempty string field or reject it.
 private string requiredString(JSONValue obj, string key)
 {
     auto value = required(obj, key);
@@ -54,7 +75,23 @@ private string requiredString(JSONValue obj, string key)
     return value.str;
 }
 
-/// Parse a whole source catalogue, retaining unknown fields and absent matches.
+/**
+ * Parse a full source vocabulary catalogue without consulting Wikidata.
+ *
+ * All entries remain in source order even if no Lexeme matches them. An
+ * entry may have multiple lookup spellings or per-variant lookup targets;
+ * neither changes its original lemma or raw source record.
+ *
+ * Params:
+ *   json = Catalogue JSON object using schemaVersion 1.
+ * Returns: The complete catalogue with source metadata and original JSON.
+ * Throws: $(D Exception) for unsupported schema versions, missing required
+ *         fields, duplicate entry IDs, malformed category Q-IDs or invalid
+ *         lookup targets. lookupLemmas and lookupTargets cannot coexist.
+ * Notes: A valid catalogue does not imply Wikidata coverage. Copying its
+ *        structs does not guarantee independent copies of arrays or JSON.
+ * See_Also: CatalogEntry, CatalogLookupTarget, loadCatalog
+ */
 VocabularyCatalog parseCatalog(JSONValue json)
 {
     auto schemaVersionValue = required(json, "schemaVersion");
@@ -145,14 +182,50 @@ VocabularyCatalog parseCatalog(JSONValue json)
     return catalog;
 }
 
+/**
+ * Parse the serialized JSON text of a complete vocabulary catalogue.
+ *
+ * Params:
+ *   jsonText = A schemaVersion 1 catalogue JSON document.
+ * Returns: All original catalogue entries and source metadata.
+ * Throws: $(D Exception) for invalid catalogue fields; malformed JSON text
+ *         may also raise a JSON parse exception.
+ * See_Also: parseCatalog, loadCatalog
+ */
 VocabularyCatalog parseCatalog(string jsonText)
 {
     return parseCatalog(parseJSON(jsonText));
 }
 
+/**
+ * Load a complete independent vocabulary catalogue from a local file.
+ *
+ * Params:
+ *   path = Path to a UTF-8 JSON catalogue document.
+ * Returns: The parsed catalogue without filtering missing Wikidata matches.
+ * Throws: File read errors, malformed JSON or invalid catalogue data.
+ * Notes: Reading this file does not contact Wikidata.
+ * See_Also: parseCatalog
+ */
 VocabularyCatalog loadCatalog(string path)
 {
     return parseCatalog(readText(path));
+}
+
+///
+unittest
+{
+    // One original entry can produce two lookup targets, without duplication.
+    auto catalogue = parseCatalog(`{
+      "schemaVersion":1,"id":"example","languageCode":"it",
+      "languageEntityId":"Q652","level":"A1","source":{"name":"example"},
+      "entries":[{"id":"1","lemma":"amico/a","sourceNote":"original",
+        "lookupTargets":[{"lemma":"amico"},{"lemma":"amica"}]}]
+    }`);
+    assert(catalogue.entries.length == 1);
+    assert(catalogue.entries[0].lemma == "amico/a");
+    assert(catalogue.entries[0].lookupTargets.length == 2);
+    assert(catalogue.entries[0].raw["sourceNote"].str == "original");
 }
 
 unittest
