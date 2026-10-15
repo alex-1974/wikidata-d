@@ -12,30 +12,77 @@ import wikidata.lexical_categories : CategoryCompatibility;
 import wikidata.query : buildLexemeQuery, isEntityId;
 import wikidata.relations : isSenseId;
 
+/**
+ * One bounded group of distinct lemma spellings and its SPARQL query.
+ *
+ * Execute $(D sparql) once, then pass the complete response for this batch
+ * to $(D matchCatalog). The source catalogue is not changed.
+ * See_Also: buildCatalogLookupBatches, matchCatalog
+ */
 struct CatalogLookupBatch
 {
-    string[] lemmas;
-    string sparql;
+    string[] lemmas; /// Unique lookup spellings in this batch, in source order.
+    string sparql; /// Ready-to-execute query text; no request has been sent.
 }
 
+/**
+ * One matching Wikidata Lexeme candidate, not a verified translation.
+ *
+ * The candidate retains its Lexeme and Sense IDs separately. Multiple
+ * Senses do not create multiple Lexeme candidates.
+ * See_Also: CatalogMatch, matchCatalogWithCategories
+ */
 struct LexemeCandidate
 {
-    string lexemeId;
-    string lexicalCategoryId;
-    string[] senseIds;
-    string matchMethod; // "exact" or "subclass"; empty in legacy callers
+    string lexemeId; /// Lexeme entity identifier, such as L5577.
+    string lexicalCategoryId; /// Wikidata part-of-speech Q-ID.
+    string[] senseIds; /// Sense IDs returned for this Lexeme, possibly empty.
+    string matchMethod; /// "exact" or "subclass"; may be empty for legacy data.
 }
 
-enum CatalogMatchStatus { noMatch, matched, multipleCandidates }
+/**
+ * Number-of-candidates outcome for one original catalogue entry.
+ *
+ * A $(D noMatch) value describes the supplied complete query results, not
+ * proof that a word or Sense is absent from all of Wikidata.
+ */
+enum CatalogMatchStatus
+{
+    noMatch, /// No acceptable candidate in the supplied complete results.
+    matched, /// Exactly one acceptable Lexeme candidate.
+    multipleCandidates /// More than one acceptable Lexeme candidate.
+}
 
+/**
+ * Lookup outcome for one unchanged source-catalogue entry.
+ *
+ * Results preserve the source order and retain entries with no match.
+ * See_Also: matchCatalog, CatalogMatchStatus
+ */
 struct CatalogMatch
 {
-    string catalogEntryId;
-    CatalogMatchStatus status;
-    LexemeCandidate[] candidates;
+    string catalogEntryId; /// Original source entry ID.
+    CatalogMatchStatus status; /// Outcome based on candidate count.
+    LexemeCandidate[] candidates; /// All acceptable Lexeme candidates.
 }
 
-/// Deduplicate lookup spellings without discarding any catalogue entries.
+/**
+ * Prepare bounded SPARQL lookup queries for a complete vocabulary catalogue.
+ *
+ * Identical lookup spellings are queried only once even when several source
+ * entries use them. The catalogue itself is neither filtered nor modified.
+ * An empty set of lookup targets produces an empty batch array.
+ *
+ * Params:
+ *   catalog = Independent catalogue containing lookup targets.
+ *   batchSize = Maximum distinct spellings per query, from 1 to 100;
+ *               defaults to 20.
+ * Returns: Ordered query batches for execution by a separate Wikidata client.
+ * Throws: $(D Exception) for an invalid batch size or invalid query input.
+ * Notes: No network request occurs here. Preserve one complete successful
+ *        response per returned batch when calling $(D matchCatalog).
+ * See_Also: matchCatalog, CatalogLookupBatch
+ */
 CatalogLookupBatch[] buildCatalogLookupBatches(
     ref const VocabularyCatalog catalog, size_t batchSize = 20)
 {
@@ -63,6 +110,7 @@ CatalogLookupBatch[] buildCatalogLookupBatches(
     return batches;
 }
 
+/// Read a required or optional SPARQL result binding value.
 private string bindingValue(JSONValue row, string key, bool optional = false)
 {
     enforce(row.type == JSONType.object, "Invalid result binding row");
@@ -77,6 +125,7 @@ private string bindingValue(JSONValue row, string key, bool optional = false)
     return (*value).str;
 }
 
+/// Extract an identifier from an HTTP or HTTPS Wikidata entity URI.
 private string entityId(string uri)
 {
     enum http = "http://www.wikidata.org/entity/";
@@ -88,6 +137,7 @@ private string entityId(string uri)
     throw new Exception("Invalid Wikidata entity URI: " ~ uri);
 }
 
+/// Internal pairing of a returned lemma and its Lexeme candidate.
 private struct SearchHit
 {
     string lemma;
@@ -95,9 +145,23 @@ private struct SearchHit
 }
 
 /**
- * One successful SPARQL response is required for every generated batch.
- * A network error must abort the caller, never be treated as a missing word.
- * A source entry with no candidates is retained with `noMatch`.
+ * Match every original catalogue entry against complete Lexeme-query results.
+ *
+ * Use this after executing every batch from $(D buildCatalogLookupBatches).
+ * A query failure must be handled by the caller, never replaced with an
+ * invented empty result. Only matching lexical-category IDs are accepted;
+ * known subclass relationships require $(D matchCatalogWithCategories).
+ *
+ * Params:
+ *   catalog = Complete original catalogue; entries are not removed.
+ *   batches = Query batches generated for that catalogue.
+ *   responses = Parsed successful SPARQL JSON, one response per batch.
+ * Returns: One match outcome per original entry, in catalogue order.
+ * Throws: $(D Exception) for missing batches, malformed responses, invalid
+ *         IDs or SPARQL bindings not requested by the relevant batch.
+ * Notes: Candidates are Lexemes, not validated translations or assigned
+ *        Senses. A $(D noMatch) result is relative to the supplied responses.
+ * See_Also: buildCatalogLookupBatches, matchCatalogWithCategories
  */
 CatalogMatch[] matchCatalog(
     ref const VocabularyCatalog catalog,
@@ -108,7 +172,28 @@ CatalogMatch[] matchCatalog(
     return matchCatalogWithCategories(catalog, batches, responses, empty);
 }
 
-/// Match with explicit P279 subclass relations retrieved from Wikidata.
+/**
+ * Match catalogue entries using exact categories or supplied subclass evidence.
+ *
+ * Use this when a previously acquired $(D CategoryCompatibility) table can
+ * accept a Wikidata lexical category below the catalogue's expected one.
+ * For a given candidate, an exact match takes precedence over subclass
+ * evidence. No new grammatical facts or Wikidata records are generated.
+ *
+ * Params:
+ *   catalog = Unchanged source vocabulary catalogue.
+ *   batches = Query batches for its exact lookup spellings.
+ *   responses = One complete, valid SPARQL JSON response per batch.
+ *   categories = Previously recorded category compatibility evidence.
+ * Returns: A source-ordered result for every catalogue entry, including
+ *          entries without accepted Lexeme candidates.
+ * Throws: $(D Exception) for incomplete or invalid SPARQL results, invalid
+ *         IDs or unexpected returned lemmas.
+ * Notes: A missing relation is not proof of incompatibility in Wikidata.
+ *        Duplicate Lexeme IDs are combined per catalogue entry and Sense
+ *        IDs are retained; candidates remain unverified translations.
+ * See_Also: matchCatalog, CategoryCompatibility, LexemeCandidate
+ */
 CatalogMatch[] matchCatalogWithCategories(
     ref const VocabularyCatalog catalog,
     const(CatalogLookupBatch)[] batches,
@@ -272,6 +357,28 @@ CatalogMatch[] matchCatalogWithCategories(
             match.status = CatalogMatchStatus.noMatch;
     }
     return matches;
+}
+
+///
+unittest
+{
+    import wikidata.catalog : parseCatalog;
+    import std.json : parseJSON;
+
+    // All source entries survive; identical lemma targets share one query.
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"sample",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"1","lemma":"gatto"},
+                             {"id":"2","lemma":"gatto"}]}`);
+    auto batches = buildCatalogLookupBatches(catalog);
+    assert(batches.length == 1 && batches[0].lemmas == ["gatto"]);
+
+    // A valid empty response means no candidates in these specific results.
+    JSONValue[] responses = [parseJSON(`{"results":{"bindings":[]}}`)];
+    auto matches = matchCatalog(catalog, batches, responses);
+    assert(matches.length == 2);
+    assert(matches[0].status == CatalogMatchStatus.noMatch);
+    assert(matches[1].status == CatalogMatchStatus.noMatch);
 }
 
 unittest
