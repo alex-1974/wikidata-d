@@ -36,7 +36,7 @@ struct WikidataStatement
  */
 struct WikidataForm
 {
-    string id;
+    string id; /// Original Form identifier, such as L5577-F1.
     string[] grammaticalFeatures; /// Wikidata grammatical-feature entity IDs.
     WikidataStatement[] statements; /// Statements attached to this Form.
     JSONValue raw; /// Complete original Form JSON including representations.
@@ -51,9 +51,9 @@ struct WikidataForm
  */
 struct WikidataSense
 {
-    string id;
-    WikidataStatement[] statements;
-    JSONValue raw;
+    string id; /// Original Sense identifier, such as L5577-S1.
+    WikidataStatement[] statements; /// Statements attached to this Sense.
+    JSONValue raw; /// Complete original Sense JSON, including multilingual glosses.
 }
 
 /**
