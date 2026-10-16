@@ -153,8 +153,7 @@ unittest
  *
  * Params:
  *   catalog = Independent catalogue containing lookup targets.
- *   batchSize = Maximum distinct spellings per query, from 1 to 100;
- *               defaults to 20.
+ *   batchSize = Maximum distinct spellings per query (1..100).
  *   optimization = Required execution strategy. Select
  *                  $(D QueryOptimization.automatic) for the original
  *                  query representation.
