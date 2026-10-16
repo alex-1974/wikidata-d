@@ -9,7 +9,7 @@ import std.exception : enforce;
 import std.json : JSONValue, JSONType, parseJSON;
 import wikidata.catalog : VocabularyCatalog;
 import wikidata.lexical_categories : CategoryCompatibility;
-import wikidata.query : buildLexemeQuery, isEntityId, QueryOptimization;
+import wikidata.query : buildLexemeQueryWithOptimization, isEntityId, QueryOptimization;
 import wikidata.relations : isSenseId;
 
 /**
@@ -107,7 +107,45 @@ unittest
 }
 
 /**
- * Prepare bounded SPARQL lookup queries for a complete vocabulary catalogue.
+ * Build exact-Lemma SPARQL batches using the original v0.1.0 API.
+ *
+ * Duplicate lookup spellings share one request, but all source catalogue
+ * entries remain untouched. This creates query text only, not HTTP requests.
+ * The public function type and the default batch size remain unchanged.
+ * For an opt-in backend-specific execution plan, use
+ * $(D buildCatalogLookupBatchesWithOptimization).
+ *
+ * Params:
+ *   catalog = Independent source catalogue containing lookup targets.
+ *   batchSize = Distinct lemmas per batch, 1..100; defaults to 20.
+ * Returns: Ordered SPARQL batches, or an empty array for no lookup targets.
+ * Throws: $(D Exception) for invalid batch size or query input.
+ * Notes: Missing results must never be fabricated on request failure.
+ * See_Also: buildCatalogLookupBatchesWithOptimization, matchCatalog
+ */
+CatalogLookupBatch[] buildCatalogLookupBatches(
+    ref const VocabularyCatalog catalog, size_t batchSize = 20)
+{
+    return buildCatalogLookupBatchesWithOptimization(catalog, batchSize,
+        QueryOptimization.automatic);
+}
+
+///
+unittest
+{
+    import wikidata.catalog : parseCatalog;
+    // Function address is unambiguous and retains the v0.1.0 signature.
+    auto build = &buildCatalogLookupBatches;
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"legacy-api",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"1","lemma":"gatto"}]}`);
+    auto batches = build(catalog, 20);
+    assert(batches.length == 1);
+    assert(!batches[0].sparql.canFind("hint:optimizer"));
+}
+
+/**
+ * Prepare bounded SPARQL lookup queries with an explicit execution plan.
  *
  * Identical lookup spellings are queried only once even when several source
  * entries use them. The catalogue itself is neither filtered nor modified.
@@ -117,18 +155,18 @@ unittest
  *   catalog = Independent catalogue containing lookup targets.
  *   batchSize = Maximum distinct spellings per query, from 1 to 100;
  *               defaults to 20.
- *   optimization = SPARQL execution strategy. Defaults to
- *                  $(D QueryOptimization.automatic), preserving
- *                  the original query representation.
+ *   optimization = Required execution strategy. Select
+ *                  $(D QueryOptimization.automatic) for the original
+ *                  query representation.
  * Returns: Ordered query batches for execution by a separate Wikidata client.
  * Throws: $(D Exception) for an invalid batch size or invalid query input.
  * Notes: No network request occurs here. Preserve one complete successful
  *        response per returned batch when calling $(D matchCatalog).
- * See_Also: matchCatalog, CatalogLookupBatch, QueryOptimization
+ * See_Also: buildCatalogLookupBatches, matchCatalog, CatalogLookupBatch, QueryOptimization
  */
-CatalogLookupBatch[] buildCatalogLookupBatches(
-    ref const VocabularyCatalog catalog, size_t batchSize = 20,
-    QueryOptimization optimization = QueryOptimization.automatic)
+CatalogLookupBatch[] buildCatalogLookupBatchesWithOptimization(
+    ref const VocabularyCatalog catalog, size_t batchSize,
+    QueryOptimization optimization)
 {
     enforce(batchSize >= 1 && batchSize <= 100, "Batch size must be 1..100");
     bool[string] seen;
@@ -148,7 +186,7 @@ CatalogLookupBatch[] buildCatalogLookupBatches(
             end = lemmas.length;
         auto part = lemmas[begin .. end].dup;
         batches ~= CatalogLookupBatch(part,
-            buildLexemeQuery(catalog.languageCode,
+            buildLexemeQueryWithOptimization(catalog.languageCode,
                 catalog.languageEntityId, part, "", optimization));
     }
     return batches;
@@ -169,7 +207,7 @@ unittest
 
     // Explicitly select a Blazegraph-specific execution strategy.
     // The catalogue and deduplicated lookup lemmas remain unchanged.
-    auto optimized = buildCatalogLookupBatches(
+    auto optimized = buildCatalogLookupBatchesWithOptimization(
         catalog, 20, QueryOptimization.blazegraphLemmaFirst);
 
     assert(optimized.length == batches.length);
