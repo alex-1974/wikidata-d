@@ -44,6 +44,11 @@ API documentation: https://alex-1974.github.io/wikidata-d/
 Wikidata responses and network access are separate from independent source
 catalogues. A Lexeme/Form/Sense candidate does not prove a translation.
 
+## License
+
+Distributed under the Boost Software License, Version 1.0.
+See [LICENSE_1_0.txt](LICENSE_1_0.txt).
+
 ## Build and test
 
 Install DMD 2.111.0 or LDC 1.41.0, DUB, and libcurl dev headers.
