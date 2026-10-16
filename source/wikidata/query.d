@@ -10,6 +10,25 @@ import std.algorithm.searching : canFind;
 import std.format : format;
 
 /**
+ * Select the execution plan for Lexeme SPARQL queries.
+ *
+ * The default keeps the existing query representation byte-for-byte.
+ * The Blazegraph option is engine-specific and must be selected explicitly.
+ * See_Also: buildLexemeQuery
+ */
+enum QueryOptimization
+{
+    automatic, /// Original query with automatic optimization.
+    blazegraphLemmaFirst /// Explicit lemma-first join order for Blazegraph.
+}
+
+///
+unittest
+{
+    assert(QueryOptimization.automatic != QueryOptimization.blazegraphLemmaFirst);
+}
+
+/**
  * Convert user-supplied text into a quoted SPARQL string literal.
  *
  * Use this when constructing SPARQL text from a lemma, label or other
@@ -113,6 +132,8 @@ private bool validLanguageCode(string code)
  *   languageEntity = Wikidata language item Q-ID, e.g. `"Q652"` for Italian.
  *   lemmas = One or more exact, nonempty written forms to look up.
  *   categoryEntity = Optional lexical-category Q-ID; empty means all categories.
+ *   optimization = Optional query execution strategy; defaults to automatic.
+ *                  The Blazegraph option requires the Blazegraph backend.
  * Returns: SPARQL query text suitable for a Wikidata Query Service client.
  *          Each matching Lexeme may yield multiple Sense rows; a Lexeme
  *          without a Sense can still appear with an unbound Sense variable.
@@ -126,7 +147,8 @@ string buildLexemeQuery(
     string languageCode,
     string languageEntity,
     const(string)[] lemmas,
-    string categoryEntity = "")
+    string categoryEntity = "",
+    QueryOptimization optimization = QueryOptimization.automatic)
 {
     enforce(validLanguageCode(languageCode), "Invalid language code");
     enforce(isEntityId(languageEntity) && languageEntity[0] == 'Q',
@@ -142,8 +164,14 @@ string buildLexemeQuery(
         ~ "PREFIX wikibase: <http://wikiba.se/ontology#>\n"
         ~ "PREFIX ontolex: <http://www.w3.org/ns/lemon/ontolex#>\n"
         ~ "PREFIX dct: <http://purl.org/dc/terms/>\n"
-        ~ "SELECT ?lemma ?lexeme ?category ?sense ?concept WHERE {\n"
-        ~ "  VALUES ?lemma {\n";
+        ~ "SELECT ?lemma ?lexeme ?category ?sense ?concept WHERE {\n";
+
+    if (optimization == QueryOptimization.blazegraphLemmaFirst)
+    {
+        query = "PREFIX hint: <http://www.bigdata.com/queryHints#>\n" ~ query;
+        query ~= "  hint:Query hint:optimizer \"None\" .\n";
+    }
+    query ~= "  VALUES ?lemma {\n";
 
     foreach (lemma; lemmas)
     {
@@ -151,11 +179,22 @@ string buildLexemeQuery(
         query ~= "    " ~ sparqlString(lemma) ~ "@" ~ languageCode ~ "\n";
     }
 
-    query ~= "  }\n"
-        ~ "  ?lexeme a ontolex:LexicalEntry ;\n"
-        ~ "    dct:language wd:" ~ languageEntity ~ " ;\n"
-        ~ "    wikibase:lemma ?lemma ;\n"
-        ~ "    wikibase:lexicalCategory ?category .\n";
+    query ~= "  }\n";
+
+    if (optimization == QueryOptimization.blazegraphLemmaFirst)
+    {
+        query ~= "  ?lexeme wikibase:lemma ?lemma .\n"
+            ~ "  ?lexeme dct:language wd:" ~ languageEntity ~ " .\n"
+            ~ "  ?lexeme wikibase:lexicalCategory ?category .\n"
+            ~ "  ?lexeme a ontolex:LexicalEntry .\n";
+    }
+    else
+    {
+        query ~= "  ?lexeme a ontolex:LexicalEntry ;\n"
+            ~ "    dct:language wd:" ~ languageEntity ~ " ;\n"
+            ~ "    wikibase:lemma ?lemma ;\n"
+            ~ "    wikibase:lexicalCategory ?category .\n";
+    }
 
     if (categoryEntity.length)
         query ~= "  FILTER(?category = wd:" ~ categoryEntity ~ ")\n";
@@ -205,3 +244,28 @@ unittest
     assert(filtered.canFind("FILTER(?category = wd:Q34698)"));
 }
 
+
+///
+unittest
+{
+    // Old callers retain their exact original query representation.
+    auto baseline = buildLexemeQuery("it", "Q652", ["gatto"]);
+    auto explicitDefault = buildLexemeQuery("it", "Q652", ["gatto"], "",
+        QueryOptimization.automatic);
+    assert(baseline == explicitDefault);
+    assert(baseline.canFind("WHERE {\n  VALUES ?lemma {"));
+    assert(!baseline.canFind("hint:optimizer"));
+
+    auto optimized = buildLexemeQuery("it", "Q652", ["gatto"], "",
+        QueryOptimization.blazegraphLemmaFirst);
+    assert(optimized.canFind("PREFIX hint: <http://www.bigdata.com/queryHints#>"));
+    assert(optimized.canFind("WHERE {\n  hint:Query hint:optimizer \"None\" .\n  VALUES"));
+    assert(optimized.canFind("?lexeme wikibase:lemma ?lemma"));
+    assert(optimized.canFind("?lexeme dct:language wd:Q652"));
+    assert(optimized.canFind("?lexeme a ontolex:LexicalEntry"));
+    assert(optimized.canFind("ontolex:sense ?sense"));
+    assert(optimized.canFind("wdt:P5137"));
+    auto filtered = buildLexemeQuery("it", "Q652", ["gatto"], "Q1084",
+        QueryOptimization.blazegraphLemmaFirst);
+    assert(filtered.canFind("FILTER(?category = wd:Q1084)"));
+}
