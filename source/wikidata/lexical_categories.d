@@ -66,6 +66,16 @@ struct CategoryCompatibility
         auto ancestors = category in ancestorsByCategory;
         return ancestors !is null && (*ancestors).canFind(expected);
     }
+
+    ///
+    unittest
+    {
+        // Category evidence is directional; matching is not symmetric.
+        CategoryCompatibility evidence;
+        evidence.add("Q468801", "Q36224");
+        assert(evidence.compatible("Q468801", "Q36224"));
+        assert(!evidence.compatible("Q36224", "Q468801"));
+    }
 }
 
 ///
@@ -78,15 +88,6 @@ unittest
     assert(!categories.compatible("Q36224", "Q468801")); // Not reversible.
 }
 
-///
-unittest
-{
-    // Category evidence is directional; matching is not symmetric.
-    CategoryCompatibility evidence;
-    evidence.add("Q468801", "Q36224");
-    assert(evidence.compatible("Q468801", "Q36224"));
-    assert(!evidence.compatible("Q36224", "Q468801"));
-}
 
 /**
  * Build a SPARQL query to find subclass relationships between categories.
