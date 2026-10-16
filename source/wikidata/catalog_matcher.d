@@ -110,6 +110,21 @@ CatalogLookupBatch[] buildCatalogLookupBatches(
     return batches;
 }
 
+///
+unittest
+{
+    import wikidata.catalog : parseCatalog;
+    // Repeated source lemmas share one network query, not one source record.
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"demo",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"a","lemma":"gatto"},
+                            {"id":"b","lemma":"gatto"}]}`);
+    auto batches = buildCatalogLookupBatches(catalog, 20);
+    assert(batches.length == 1);
+    assert(batches[0].lemmas == ["gatto"]);
+}
+
+
 /// Read a required or optional SPARQL result binding value.
 private string bindingValue(JSONValue row, string key, bool optional = false)
 {
@@ -358,6 +373,22 @@ CatalogMatch[] matchCatalogWithCategories(
     }
     return matches;
 }
+
+///
+unittest
+{
+    import wikidata.catalog : parseCatalog;
+    // A valid empty SPARQL response keeps every source entry unresolved.
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"demo",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"a","lemma":"gatto"}]}`);
+    auto batches = buildCatalogLookupBatches(catalog);
+    JSONValue[] responses = [parseJSON(`{"results":{"bindings":[]}}`)];
+    auto found = matchCatalog(catalog, batches, responses);
+    assert(found.length == 1);
+    assert(found[0].status == CatalogMatchStatus.noMatch);
+}
+
 
 ///
 unittest
