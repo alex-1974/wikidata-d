@@ -158,6 +158,20 @@ WikidataStatement[] readStatements(JSONValue entity)
     return result;
 }
 
+///
+unittest
+{
+    // Read a statement without discarding its original qualifiers or rank.
+    auto source = parseJSON(`{"claims":{"P5137":[{
+      "mainsnak":{"datavalue":{"value":{"id":"Q146"}}},
+      "rank":"preferred","qualifiers":{"P1":[]}}]}}`);
+    auto found = readStatements(source);
+    assert(found.length == 1);
+    assert(found[0].propertyId == "P5137");
+    assert(found[0].targetId == "Q146");
+    assert(found[0].raw["rank"].str == "preferred");
+}
+
 /**
  * Parse one Wikidata Lexeme entity into typed fields and preserved source JSON.
  *
@@ -216,6 +230,19 @@ WikidataLexeme parseLexeme(JSONValue entity)
     }
 
     return result;
+}
+
+///
+unittest
+{
+    // A parsed JSON object retains distinct Form and Sense IDs.
+    auto entity = parseJSON(`{"id":"L42","language":"Q652",
+      "lexicalCategory":"Q1084","forms":[{"id":"L42-F1"}],
+      "senses":[{"id":"L42-S1"}],"newProperty":true}`);
+    auto lexeme = parseLexeme(entity);
+    assert(lexeme.forms[0].id == "L42-F1");
+    assert(lexeme.senses[0].id == "L42-S1");
+    assert(lexeme.raw["newProperty"].boolean);
 }
 
 /**

@@ -115,6 +115,15 @@ string buildFormLookupQuery(string languageCode, string languageEntityId,
     return sparql;
 }
 
+///
+unittest
+{
+    // Construct an offline query. Form hits remain unverified candidates.
+    auto queryText = buildFormLookupQuery("it", "Q652", ["gli"]);
+    assert(queryText.canFind("\"gli\"@it"));
+    assert(queryText.canFind("ontolex:representation ?word"));
+}
+
 /// Extract the string value of a required SPARQL binding field.
 private string bindingString(JSONValue row, string key)
 {
@@ -197,6 +206,23 @@ FormCandidate[] parseFormLookupResponse(JSONValue response,
             candidates ~= candidate;
     }
     return candidates;
+}
+
+///
+unittest
+{
+    // Keep the exact written word and owning Form ID separate.
+    auto answer = parseJSON(`{"results":{"bindings":[{
+      "word":{"value":"gli"},
+      "lexeme":{"value":"http://www.wikidata.org/entity/L100"},
+      "form":{"value":"http://www.wikidata.org/entity/L100-F2"},
+      "lemma":{"value":"il"},
+      "category":{"value":"http://www.wikidata.org/entity/Q103184"}}]}}`);
+    auto candidates = parseFormLookupResponse(answer, ["gli"]);
+    assert(candidates.length == 1);
+    assert(candidates[0].word == "gli");
+    assert(candidates[0].lexemeId == "L100");
+    assert(candidates[0].formId == "L100-F2");
 }
 
 /**
