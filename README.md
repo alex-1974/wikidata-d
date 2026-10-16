@@ -39,6 +39,18 @@ R1.14-L documents the [internal v0.1.x source-API compatibility decision](docs/A
 
 For local setup see [LOCAL_SETUP.md](LOCAL_SETUP.md).
 
+## Ddoc rendering
+
+The repository's `docs/ddoc/macros.ddoc` defines `$(D ...)` for
+offline DMD Ddoc generation. Use the repeatable renderer:
+
+```sh
+python3 tools/build_ddoc.py --repo . --out /tmp/wikidata-ddoc-html
+```
+
+This is a DMD Ddoc rendering gate, **not** a DDOX or GitHub Pages
+qualification. API changes and network calls are not part of this build.
+
 ## Development acknowledgement
 
 Assisted by AI.
