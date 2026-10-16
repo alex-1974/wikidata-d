@@ -34,3 +34,15 @@ wikidata-d-test-*
 
 # Local coverage reports
 /reports/local/
+
+# Generated DDOX documentation (sources in docs/ remain tracked)
+/docs.json
+/docs/file_hashes.json
+/docs/index.html
+/docs/sitemap.xml
+/docs/symbols.js
+/docs/images/
+/docs/prettify/
+/docs/scripts/
+/docs/styles/
+/docs/wikidata/
