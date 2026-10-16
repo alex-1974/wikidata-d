@@ -2,7 +2,7 @@
   "name": "wikidata-d",
   "description": "Lean D library for Wikidata clients, Lexemes, catalogues and exact matching",
   "homepage": "https://github.com/alex-1974/wikidata-d",
-  "license": "BSL-1.0",
+  "license": "MIT",
   "targetType": "library",
   "sourcePaths": [
     "source"
