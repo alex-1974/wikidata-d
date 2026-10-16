@@ -80,6 +80,15 @@ struct WikidataClient
         return requestJson(url, "application/sparql-results+json", sparqlTimeout);
     }
 
+    ///
+    unittest
+    {
+        // Invalid input fails locally before any HTTP request is made.
+        import std.exception : assertThrown;
+        auto client = WikidataClient("VocabularyTrainer/0.1 (dev@example.org)");
+        assertThrown!Exception(client.query(""));
+    }
+
     /**
      * Search Lexemes by exact written lemmas and optional lexical category.
      *
@@ -103,6 +112,15 @@ struct WikidataClient
     {
         return query(buildLexemeQuery(
             languageCode, languageEntity, lemmas, categoryEntity));
+    }
+
+    ///
+    unittest
+    {
+        // No network access: invalid query inputs are rejected by the builder.
+        import std.exception : assertThrown;
+        auto client = WikidataClient("VocabularyTrainer/0.1 (dev@example.org)");
+        assertThrown!Exception(client.findLexemes("it", "Q652", []));
     }
 
     /**
@@ -137,6 +155,15 @@ struct WikidataClient
         enforce(entity.type == JSONType.object, "Invalid entity structure");
         enforce(!("missing" in entity.object), "Entity not found: " ~ id);
         return entity;
+    }
+
+    ///
+    unittest
+    {
+        // Reject invalid entity identifiers without sending a request.
+        import std.exception : assertThrown;
+        auto client = WikidataClient("VocabularyTrainer/0.1 (dev@example.org)");
+        assertThrown!Exception(client.getEntity("not-an-entity-id"));
     }
 
     /// Request and parse JSON, propagating transport and decoding errors.
