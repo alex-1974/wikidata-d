@@ -49,6 +49,17 @@ struct WikidataClient
         this.userAgent = userAgent;
     }
 
+    ///
+    unittest
+    {
+        import std.exception : assertThrown;
+        // Client construction does not send an HTTP request.
+        auto client = WikidataClient("VocabularyTrainer/0.1 (contact: dev@example.org)");
+        assert(client.userAgent.length != 0);
+        assertThrown!Exception(WikidataClient(""));
+    }
+
+
     /**
      * Execute SPARQL text against the configured query endpoint.
      *

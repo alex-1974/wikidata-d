@@ -47,6 +47,16 @@ bool isSenseId(string id)
     return true;
 }
 
+///
+unittest
+{
+    // Identifier syntax is not a claim that a Sense exists in Wikidata.
+    assert(isSenseId("L5577-S1"));
+    assert(!isSenseId("L5577-F1"));
+    assert(!isSenseId("L5577-S0"));
+}
+
+
 /**
  * One directed or shared Wikidata relationship involving a source Sense.
  *
@@ -283,6 +293,16 @@ SenseRelation[] parseSenseRelations(JSONValue result, string sourceSenseId)
     }
     return edges;
 }
+
+///
+unittest
+{
+    // A successful empty response is a valid empty set of relation candidates.
+    auto result = parseJSON(`{"results":{"bindings":[]}}`);
+    auto edges = parseSenseRelations(result, "L5577-S1");
+    assert(edges.length == 0);
+}
+
 
 unittest
 {

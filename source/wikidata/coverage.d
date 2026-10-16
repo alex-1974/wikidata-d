@@ -223,6 +223,24 @@ CoverageReport buildCoverageReport(
     return report;
 }
 
+///
+unittest
+{
+    import wikidata.catalog : parseCatalog;
+    import wikidata.catalog_matcher : buildCatalogLookupBatches, matchCatalog;
+    // Report absence in supplied complete results, never delete catalogue data.
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"demo",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"a","lemma":"gatto"}]}`);
+    auto batches = buildCatalogLookupBatches(catalog);
+    JSONValue[] responses = [parseJSON(`{"results":{"bindings":[]}}`)];
+    auto matches = matchCatalog(catalog, batches, responses);
+    auto report = buildCoverageReport(catalog, batches, responses, matches);
+    assert(report.entries.length == catalog.entries.length);
+    assert(report.noMatch == 1 && report.noLemmaHit == 1);
+}
+
+
 /**
  * Convert a completed coverage report to a structured JSON document.
  *
@@ -296,6 +314,25 @@ JSONValue coverageJson(ref const CoverageReport report)
     output["entries"] = rows;
     return output;
 }
+
+///
+unittest
+{
+    import wikidata.catalog : parseCatalog;
+    import wikidata.catalog_matcher : buildCatalogLookupBatches, matchCatalog;
+    // JSON serialization keeps the source entry even without any hit.
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"demo",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"a","lemma":"gatto"}]}`);
+    auto batches = buildCatalogLookupBatches(catalog);
+    JSONValue[] responses = [parseJSON(`{"results":{"bindings":[]}}`)];
+    auto matches = matchCatalog(catalog, batches, responses);
+    auto report = buildCoverageReport(catalog, batches, responses, matches);
+    auto json = coverageJson(report);
+    assert(json["entries"].array.length == 1);
+    assert(json["summary"]["catalogEntries"].integer == 1);
+}
+
 
 ///
 unittest
