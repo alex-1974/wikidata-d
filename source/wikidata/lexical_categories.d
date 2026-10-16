@@ -66,6 +66,16 @@ struct CategoryCompatibility
         auto ancestors = category in ancestorsByCategory;
         return ancestors !is null && (*ancestors).canFind(expected);
     }
+
+    ///
+    unittest
+    {
+        // Category evidence is directional; matching is not symmetric.
+        CategoryCompatibility evidence;
+        evidence.add("Q468801", "Q36224");
+        assert(evidence.compatible("Q468801", "Q36224"));
+        assert(!evidence.compatible("Q36224", "Q468801"));
+    }
 }
 
 ///
@@ -77,6 +87,7 @@ unittest
     assert(categories.compatible("Q468801", "Q468801")); // Same category.
     assert(!categories.compatible("Q36224", "Q468801")); // Not reversible.
 }
+
 
 /**
  * Build a SPARQL query to find subclass relationships between categories.
@@ -130,6 +141,16 @@ string buildCategoryCompatibilityQuery(
     }
     output ~= "  }\n  ?category wdt:P279+ ?ancestor .\n}\n";
     return output;
+}
+
+///
+unittest
+{
+    // No network call: return the exact SPARQL category relationship query.
+    auto queryText = buildCategoryCompatibilityQuery(["Q468801"], ["Q36224"]);
+    assert(queryText.canFind("wdt:P279+"));
+    assert(queryText.canFind("wd:Q468801"));
+    assert(queryText.canFind("wd:Q36224"));
 }
 
 /// Read and validate a Wikidata Q-ID from one SPARQL binding term.
