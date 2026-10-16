@@ -11,6 +11,14 @@ import std.json : JSONType, JSONValue, parseJSON;
 import wikidata.catalog : VocabularyCatalog;
 import wikidata.query : isEntityId, sparqlString;
 
+/**
+ * One candidate Wikidata Form matching a requested written word.
+ *
+ * The owning Lexeme, specific Form and its lexical category are retained
+ * separately. A candidate is not a verified Sense or translation; check the
+ * catalogue's own part-of-speech expectations before using it.
+ * See_Also: parseFormLookupResponse, buildFormCandidatesReport
+ */
 struct FormCandidate
 {
     string word;                /// Exact requested representation.
@@ -20,7 +28,26 @@ struct FormCandidate
     string lexicalCategoryId;   /// Wikidata POS; not yet validated against catalogue.
 }
 
-/// Validate a Wikidata Form subentity identifier.
+///
+unittest
+{
+    // A Form is not a Sense and its Lexeme is kept separately.
+    FormCandidate candidate;
+    candidate.word = "gatti";
+    candidate.lexemeId = "L5577";
+    candidate.formId = "L5577-F1";
+    assert(candidate.formId != candidate.lexemeId);
+}
+
+/**
+ * Check whether a string uses Wikidata's Lexeme-Form identifier syntax.
+ *
+ * Params:
+ *   id = Identifier to test, e.g. $(D "L5577-F1").
+ * Returns: $(D true) for valid syntax; $(D false) otherwise.
+ * Notes: A valid-looking identifier does not prove that the Form exists.
+ * See_Also: parseFormLookupResponse
+ */
 bool isFormId(string id)
 {
     if (id.length < 5 || id[0] != 'L') return false;
@@ -37,10 +64,33 @@ bool isFormId(string id)
     return true;
 }
 
+///
+unittest
+{
+    assert(isFormId("L5577-F1")); // One Wikidata Form.
+    assert(!isFormId("L5577-S1")); // This is a Sense, not a Form.
+    assert(!isFormId("L0-F1"));    // Zero is not an accepted Lexeme number.
+}
+
 /**
  * Search exact language-tagged Form representations. Do not constrain POS
- * at query time: the catalog's absence may stem from category differences.
- * Query only bounded, distinct batches. Other lexemes may share a Form string.
+ * at query time: the catalogue's absence may stem from category differences.
+ * This function creates a query, but does not contact Wikidata.
+ *
+ * Use it when a catalogue entry was not matched by its Lexeme lemma and
+ * you want to inspect whether its spelling occurs as a Form of another
+ * Lexeme. Multiple Forms and Lexemes may share the same spelling.
+ *
+ * Params:
+ *   languageCode = Language tag of each written Form, e.g. $(D "it").
+ *   languageEntityId = Wikidata language item Q-ID, e.g. $(D "Q652").
+ *   words = Between 1 and 25 nonempty exact spellings.
+ * Returns: SPARQL query text for Form, owning Lexeme, canonical lemma
+ *          and lexical category candidates.
+ * Throws: $(D Exception) for an invalid language, malformed Q-ID, empty
+ *         spelling or batch outside 1–25 items.
+ * Notes: Results are candidates, never automatic Sense assignments.
+ * See_Also: parseFormLookupResponse
  */
 string buildFormLookupQuery(string languageCode, string languageEntityId,
     const(string)[] words)
@@ -76,6 +126,16 @@ string buildFormLookupQuery(string languageCode, string languageEntityId,
     return sparql;
 }
 
+///
+unittest
+{
+    // Construct an offline query. Form hits remain unverified candidates.
+    auto queryText = buildFormLookupQuery("it", "Q652", ["gli"]);
+    assert(queryText.canFind("\"gli\"@it"));
+    assert(queryText.canFind("ontolex:representation ?word"));
+}
+
+/// Extract the string value of a required SPARQL binding field.
 private string bindingString(JSONValue row, string key)
 {
     enforce(row.type == JSONType.object, "Invalid binding row");
@@ -88,6 +148,7 @@ private string bindingString(JSONValue row, string key)
     return (*value).str;
 }
 
+/// Read an entity identifier from a Wikidata entity URI.
 private string wikidataId(string uri)
 {
     enum http = "http://www.wikidata.org/entity/";
@@ -97,7 +158,25 @@ private string wikidataId(string uri)
     throw new Exception("Unexpected Wikidata entity URI: " ~ uri);
 }
 
-/// Parse strictly: errors must not be silently turned into empty search results.
+/**
+ * Convert a Form-discovery SPARQL JSON response into distinct candidates.
+ *
+ * Use this after $(D buildFormLookupQuery) has been executed. The resulting
+ * entries retain the exact requested word, owning Lexeme ID, Form ID,
+ * canonical Wikidata lemma and lexical-category ID. Identical word/Form
+ * duplicates are suppressed; different Forms remain separate.
+ *
+ * Params:
+ *   response = Parsed SPARQL JSON response with results.bindings.
+ *   requestedWords = Exact spelling list used to build the query.
+ * Returns: Candidate array; an empty array means the supplied complete,
+ *          valid response contained no matching binding rows.
+ * Throws: $(D Exception) for missing data, unknown words, invalid entity
+ *         IDs, or a Form not belonging to its returned Lexeme.
+ * Notes: Does not assert that candidates belong to a particular catalogue
+ *        entry, lexical category or Sense.
+ * See_Also: FormCandidate, buildFormCandidatesReport
+ */
 FormCandidate[] parseFormLookupResponse(JSONValue response,
     const(string)[] requestedWords)
 {
@@ -140,9 +219,43 @@ FormCandidate[] parseFormLookupResponse(JSONValue response,
     return candidates;
 }
 
+///
+unittest
+{
+    // Keep the exact written word and owning Form ID separate.
+    auto answer = parseJSON(`{"results":{"bindings":[{
+      "word":{"value":"gli"},
+      "lexeme":{"value":"http://www.wikidata.org/entity/L100"},
+      "form":{"value":"http://www.wikidata.org/entity/L100-F2"},
+      "lemma":{"value":"il"},
+      "category":{"value":"http://www.wikidata.org/entity/Q103184"}}]}}`);
+    auto candidates = parseFormLookupResponse(answer, ["gli"]);
+    assert(candidates.length == 1);
+    assert(candidates[0].word == "gli");
+    assert(candidates[0].lexemeId == "L100");
+    assert(candidates[0].formId == "L100-F2");
+}
+
 /**
  * Enrich ONLY unresolved records from a separate M5.5 report with Form
  * candidates. This is a supplementary report, not changed coverage numbers.
+ *
+ * Use this after category coverage has identified entries with $(D noMatch).
+ * Only those unresolved entries appear in the new report. The input
+ * catalogue and original coverage report remain unchanged; the Form
+ * candidates are leads for further analysis, not confirmed matches.
+ *
+ * Params:
+ *   catalog = Complete original vocabulary catalogue (not modified).
+ *   categoryCoverage = Existing category coverage JSON for that catalogue.
+ *   candidates = Parsed Form candidates to associate by requested spelling.
+ * Returns: JSON report with schemaVersion 1, catalogId, summary totals,
+ *          and candidate arrays for unresolved catalogue entries.
+ * Throws: $(D Exception) if coverage and catalogue IDs, lengths, ordering
+ *         or expected JSON fields do not match.
+ * Notes: Each candidate may be listed for multiple entries with the same
+ *        lookup spelling. Coverage totals are not recalculated.
+ * See_Also: parseFormLookupResponse
  */
 JSONValue buildFormCandidatesReport(ref const VocabularyCatalog catalog,
     JSONValue categoryCoverage, const(FormCandidate)[] candidates)
@@ -205,6 +318,25 @@ JSONValue buildFormCandidatesReport(ref const VocabularyCatalog catalog,
     outJson["summary"] = totals;
     outJson["entries"] = rows;
     return outJson;
+}
+
+///
+unittest
+{
+    // Build a Form query for a word missing from lemma coverage.
+    auto query = buildFormLookupQuery("it", "Q652", ["gli"]);
+    assert(query.canFind("\"gli\"@it"));
+
+    // A complete offline response gives one candidate; no HTTP call is made.
+    auto sample = parseJSON(`{"results":{"bindings":[
+      {"word":{"value":"gli"},
+       "lexeme":{"value":"http://www.wikidata.org/entity/L100"},
+       "form":{"value":"http://www.wikidata.org/entity/L100-F2"},
+       "lemma":{"value":"il"},
+       "category":{"value":"http://www.wikidata.org/entity/Q103184"}}
+    ]}}`);
+    auto hits = parseFormLookupResponse(sample, ["gli"]);
+    assert(hits.length == 1 && hits[0].formId == "L100-F2");
 }
 
 unittest
