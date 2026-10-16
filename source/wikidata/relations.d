@@ -84,6 +84,17 @@ struct SenseRelation
     JSONValue raw; /// Original SPARQL binding row, including additional fields.
 }
 
+///
+unittest
+{
+    // Property and direction are both needed to interpret this candidate edge.
+    SenseRelation edge;
+    edge.sourceSenseId = "L5577-S1";
+    edge.propertyId = "P5972";
+    edge.direction = "outgoing";
+    assert(edge.targetSenseId.length == 0 && edge.direction == "outgoing");
+}
+
 /**
  * Build a bounded SPARQL query for nearby relationships of one Sense.
  *

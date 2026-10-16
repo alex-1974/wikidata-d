@@ -25,6 +25,16 @@ struct CatalogLookupBatch
     string sparql; /// Ready-to-execute query text; no request has been sent.
 }
 
+///
+unittest
+{
+    // A batch carries text to execute; constructing it performs no HTTP call.
+    CatalogLookupBatch batch;
+    batch.lemmas = ["gatto", "cane"];
+    batch.sparql = "SELECT ?lexeme WHERE {}";
+    assert(batch.lemmas.length == 2);
+}
+
 /**
  * One matching Wikidata Lexeme candidate, not a verified translation.
  *
@@ -40,6 +50,17 @@ struct LexemeCandidate
     string matchMethod; /// "exact" or "subclass"; may be empty for legacy data.
 }
 
+///
+unittest
+{
+    // Lexeme and Sense identifiers remain distinct; no translation is certified.
+    LexemeCandidate candidate;
+    candidate.lexemeId = "L5577";
+    candidate.senseIds = ["L5577-S1"];
+    candidate.matchMethod = "exact";
+    assert(candidate.senseIds[0] != candidate.lexemeId);
+}
+
 /**
  * Number-of-candidates outcome for one original catalogue entry.
  *
@@ -53,6 +74,15 @@ enum CatalogMatchStatus
     multipleCandidates /// More than one acceptable Lexeme candidate.
 }
 
+///
+unittest
+{
+    // Status describes the supplied results, not global Wikidata coverage.
+    auto status = CatalogMatchStatus.noMatch;
+    assert(status != CatalogMatchStatus.matched);
+    assert(CatalogMatchStatus.multipleCandidates != CatalogMatchStatus.matched);
+}
+
 /**
  * Lookup outcome for one unchanged source-catalogue entry.
  *
@@ -64,6 +94,16 @@ struct CatalogMatch
     string catalogEntryId; /// Original source entry ID.
     CatalogMatchStatus status; /// Outcome based on candidate count.
     LexemeCandidate[] candidates; /// All acceptable Lexeme candidates.
+}
+
+///
+unittest
+{
+    // Unmatched records remain addressable by their original catalogue IDs.
+    CatalogMatch match;
+    match.catalogEntryId = "source-1";
+    match.status = CatalogMatchStatus.noMatch;
+    assert(match.candidates.length == 0 && match.catalogEntryId == "source-1");
 }
 
 /**
