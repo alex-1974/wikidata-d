@@ -14,6 +14,36 @@ verified modules: `query`, `client`, `lexeme`, `catalog`, `catalog_matcher`,
 - The production library makes no grammar synthesis or form-selection claims.
 - Full original Lexeme/Form/Sense JSON is retained by `wikidata.lexeme`.
 
+## Using wikidata-d
+
+This is a DUB library, not a command-line program. Add it as a dependency
+in your DUB project after an actual package release, or use a local
+path-based DUB dependency during development. The package is **not yet**
+announced as published to the DUB registry.
+
+A small offline consumer example:
+
+```d
+import wikidata.query : buildLexemeQuery, isEntityId;
+import wikidata.catalog : parseCatalog;
+
+void main()
+{
+    assert(isEntityId("Q652"));
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"it-A1",
+        "languageCode":"it","languageEntityId":"Q652","level":"A1",
+        "source":{},"entries":[{"id":"1","lemma":"gatto"}]}`);
+    assert(catalog.entries.length == 1);
+    auto sparql = buildLexemeQuery("it", "Q652", ["gatto"]);
+    assert(sparql.length != 0); // Query text only; no HTTP request.
+}
+```
+
+API documentation: https://alex-1974.github.io/wikidata-d/
+
+Wikidata responses and network access are separate from independent source
+catalogues. A Lexeme/Form/Sense candidate does not prove a translation.
+
 ## Build and test
 
 Install DMD 2.111.0 or LDC 1.41.0, DUB, and libcurl dev headers.
