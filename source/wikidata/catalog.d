@@ -182,6 +182,19 @@ VocabularyCatalog parseCatalog(JSONValue json)
     return catalog;
 }
 
+///
+unittest
+{
+    // Keep a missing Wikidata match in the independent source catalogue.
+    auto document = parseJSON(`{"schemaVersion":1,"id":"example",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"1","lemma":"gatto"}]}`);
+    auto catalogue = parseCatalog(document);
+    assert(catalogue.entries.length == 1);
+    assert(catalogue.entries[0].lemma == "gatto");
+}
+
+
 /**
  * Parse the serialized JSON text of a complete vocabulary catalogue.
  *
@@ -196,6 +209,19 @@ VocabularyCatalog parseCatalog(string jsonText)
 {
     return parseCatalog(parseJSON(jsonText));
 }
+
+///
+unittest
+{
+    // Each independent source entry stays one record, even with two spellings.
+    auto catalogue = parseCatalog(`{"schemaVersion":1,"id":"example",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"1","lemma":"amico/a",
+      "lookupLemmas":["amico","amica"]}]}`);
+    assert(catalogue.entries.length == 1);
+    assert(catalogue.entries[0].lookupTargets.length == 2);
+}
+
 
 /**
  * Load a complete independent vocabulary catalogue from a local file.

@@ -29,6 +29,16 @@ void validateBatchResponse(JSONValue response)
         "SPARQL response has no bindings array");
 }
 
+///
+unittest
+{
+    // A successful empty SPARQL response is valid; a service error is not.
+    import std.exception : assertThrown;
+    validateBatchResponse(parseJSON(`{"results":{"bindings":[]}}`));
+    assertThrown!Exception(validateBatchResponse(parseJSON(`{"error":"unavailable"}`)));
+}
+
+
 /**
  * Combine exact SPARQL query text and its validated response for storage.
  *
@@ -50,6 +60,17 @@ JSONValue makeBatchEnvelope(string query, JSONValue response)
     envelope["response"] = response;
     return envelope;
 }
+
+///
+unittest
+{
+    // Store the exact SPARQL text beside the successful response.
+    auto result = parseJSON(`{"results":{"bindings":[]}}`);
+    auto saved = makeBatchEnvelope("SELECT * WHERE {}", result);
+    assert(saved["schemaVersion"].integer == 1);
+    assert(saved["query"].str == "SELECT * WHERE {}");
+}
+
 
 /**
  * Read a saved batch response only when its query text matches exactly.
@@ -83,6 +104,19 @@ bool decodeBatchEnvelope(JSONValue envelope, string query, out JSONValue respons
     validateBatchResponse(response);
     return true;
 }
+
+///
+unittest
+{
+    // Even insignificant query-text differences cause a cache miss.
+    auto saved = makeBatchEnvelope("SELECT * WHERE {}",
+        parseJSON(`{"results":{"bindings":[]}}`));
+    JSONValue response;
+    assert(decodeBatchEnvelope(saved, "SELECT * WHERE {}", response));
+    assert(response["results"]["bindings"].array.length == 0);
+    assert(!decodeBatchEnvelope(saved, "SELECT  * WHERE {}", response));
+}
+
 
 /**
  * Retrieve a locally saved SPARQL batch if the exact query matches.
