@@ -8,6 +8,16 @@ import std.exception : enforce;
 import std.file : exists, readText, rename, write;
 import std.json : JSONValue, JSONType, parseJSON;
 
+/**
+ * Require the successful SPARQL SELECT-result shape for a cached batch.
+ *
+ * Params:
+ *   response = Parsed SPARQL JSON expected to contain results.bindings.
+ * Throws: $(D Exception) if the root, results or bindings has invalid shape.
+ * Notes: This checks structure, not the factual completeness of server data.
+ *        Do not treat failures as an empty result set.
+ * See_Also: makeBatchEnvelope, loadCachedBatch
+ */
 void validateBatchResponse(JSONValue response)
 {
     enforce(response.type == JSONType.object, "Invalid SPARQL response");
@@ -19,6 +29,27 @@ void validateBatchResponse(JSONValue response)
         "SPARQL response has no bindings array");
 }
 
+///
+unittest
+{
+    // A successful empty SPARQL response is valid; a service error is not.
+    import std.exception : assertThrown;
+    validateBatchResponse(parseJSON(`{"results":{"bindings":[]}}`));
+    assertThrown!Exception(validateBatchResponse(parseJSON(`{"error":"unavailable"}`)));
+}
+
+
+/**
+ * Combine exact SPARQL query text and its validated response for storage.
+ *
+ * Params:
+ *   query = Nonempty, exact SPARQL text used to obtain the response.
+ *   response = Parsed complete SPARQL JSON with results.bindings.
+ * Returns: Version 1 JSON envelope containing query and response.
+ * Throws: $(D Exception) for an empty query or malformed response shape.
+ * Notes: The query is preserved verbatim; it is not canonicalized.
+ * See_Also: decodeBatchEnvelope, saveCachedBatch
+ */
 JSONValue makeBatchEnvelope(string query, JSONValue response)
 {
     enforce(query.length != 0, "Missing batch SPARQL query");
@@ -30,6 +61,32 @@ JSONValue makeBatchEnvelope(string query, JSONValue response)
     return envelope;
 }
 
+///
+unittest
+{
+    // Store the exact SPARQL text beside the successful response.
+    auto result = parseJSON(`{"results":{"bindings":[]}}`);
+    auto saved = makeBatchEnvelope("SELECT * WHERE {}", result);
+    assert(saved["schemaVersion"].integer == 1);
+    assert(saved["query"].str == "SELECT * WHERE {}");
+}
+
+
+/**
+ * Read a saved batch response only when its query text matches exactly.
+ *
+ * Params:
+ *   envelope = Parsed checkpoint envelope using schemaVersion 1.
+ *   query = Exact SPARQL text expected by the caller.
+ *   response = Output receiving the validated response on $(D true).
+ * Returns: $(D true) and sets $(D response) when the query matches; $(D false)
+ *          if the checkpoint stores different query text.
+ * Throws: $(D Exception) for malformed checkpoint fields, unsupported schema
+ *         or invalid stored response when the query matches.
+ * Notes: On $(D false), do not rely on the previous content of $(D response).
+ *        Semantically equivalent but differently formatted queries differ.
+ * See_Also: makeBatchEnvelope, loadCachedBatch
+ */
 bool decodeBatchEnvelope(JSONValue envelope, string query, out JSONValue response)
 {
     enforce(envelope.type == JSONType.object, "Invalid checkpoint object");
@@ -48,6 +105,33 @@ bool decodeBatchEnvelope(JSONValue envelope, string query, out JSONValue respons
     return true;
 }
 
+///
+unittest
+{
+    // Even insignificant query-text differences cause a cache miss.
+    auto saved = makeBatchEnvelope("SELECT * WHERE {}",
+        parseJSON(`{"results":{"bindings":[]}}`));
+    JSONValue response;
+    assert(decodeBatchEnvelope(saved, "SELECT * WHERE {}", response));
+    assert(response["results"]["bindings"].array.length == 0);
+    assert(!decodeBatchEnvelope(saved, "SELECT  * WHERE {}", response));
+}
+
+
+/**
+ * Retrieve a locally saved SPARQL batch if the exact query matches.
+ *
+ * Params:
+ *   filePath = Path to the checkpoint JSON file.
+ *   query = Exact SPARQL text expected by the caller.
+ *   response = Output receiving the validated response on a hit.
+ * Returns: $(D false) for a missing file or different stored query;
+ *          $(D true) for a validated matching response.
+ * Throws: File-reading, JSON decoding and checkpoint validation errors.
+ * Notes: This is a single-writer checkpoint, not a concurrent cache or a
+ *        crash-durable database. On $(D false), do not use $(D response).
+ * See_Also: saveCachedBatch, decodeBatchEnvelope
+ */
 bool loadCachedBatch(string filePath, string query, out JSONValue response)
 {
     if (!exists(filePath))
@@ -55,12 +139,52 @@ bool loadCachedBatch(string filePath, string query, out JSONValue response)
     return decodeBatchEnvelope(parseJSON(readText(filePath)), query, response);
 }
 
+///
+unittest
+{
+    // A genuinely missing local checkpoint is a cache miss, not a Wikidata no-match.
+    import std.file : exists, tempDir;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    auto path = buildPath(tempDir(), "wikidata-c9a-" ~ randomUUID().toString() ~ ".json");
+    assert(!exists(path));
+    JSONValue restored;
+    assert(!loadCachedBatch(path, "SELECT * WHERE {}", restored));
+}
+
+
+/**
+ * Save a validated SPARQL batch response to a local checkpoint file.
+ *
+ * Params:
+ *   filePath = Destination path; a sibling $(D .tmp) path is used first.
+ *   query = Exact nonempty SPARQL query string used as the cache key.
+ *   response = Parsed successful SPARQL result JSON.
+ * Throws: Validation, serialization, file-write or rename errors.
+ * Notes: Designed for a single writer. Simultaneous writers, power-loss
+ *        durability, and recovery of a stale $(D .tmp) file are not guaranteed.
+ *        The cache key is exact query text, not SPARQL equivalence.
+ * See_Also: loadCachedBatch, makeBatchEnvelope
+ */
 void saveCachedBatch(string filePath, string query, JSONValue response)
 {
     auto serialized = makeBatchEnvelope(query, response).toPrettyString();
     auto temporary = filePath ~ ".tmp";
     write(temporary, serialized);
     rename(temporary, filePath);
+}
+
+///
+unittest
+{
+    // Validate and round-trip a complete response without file I/O or network.
+    auto data = parseJSON(`{"results":{"bindings":[]}}`);
+    validateBatchResponse(data);
+    auto envelope = makeBatchEnvelope("SELECT * WHERE {}", data);
+    JSONValue restored;
+    assert(decodeBatchEnvelope(envelope, "SELECT * WHERE {}", restored));
+    assert(restored["results"]["bindings"].array.length == 0);
+    assert(!decodeBatchEnvelope(envelope, "SELECT ?x WHERE {}", restored));
 }
 
 unittest

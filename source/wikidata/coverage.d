@@ -12,29 +12,67 @@ import wikidata.catalog : VocabularyCatalog;
 import wikidata.catalog_matcher : CatalogLookupBatch, CatalogMatch,
     CatalogMatchStatus, LexemeCandidate;
 
+/**
+ * Coverage information for one unchanged vocabulary-catalogue entry.
+ *
+ * Observed categories describe returned lemma hits before part-of-speech
+ * filtering, while candidates contain accepted Lexeme matches.
+ * See_Also: CoverageReport, buildCoverageReport
+ */
 struct CoverageEntry
 {
-    string catalogEntryId;
-    string lemma;
-    CatalogMatchStatus status;
-    LexemeCandidate[] candidates;
-    bool anyLemmaHit;       /// A SPARQL hit exists for one of the lookup lemmas.
-    string[] observedCategories; /// Wikidata categories before POS filtering.
+    string catalogEntryId; /// Original catalogue entry ID.
+    string lemma; /// Original source spelling, not necessarily a lookup target.
+    CatalogMatchStatus status; /// Accepted Lexeme match outcome.
+    LexemeCandidate[] candidates; /// Accepted Lexemes; not verified translations.
+    bool anyLemmaHit; /// At least one queried spelling has a result binding.
+    string[] observedCategories; /// Categories observed before POS filtering.
 }
 
+///
+unittest
+{
+    // A lemma hit may still fail part-of-speech filtering.
+    CoverageEntry entry;
+    entry.catalogEntryId = "source-1";
+    entry.anyLemmaHit = true;
+    entry.status = CatalogMatchStatus.noMatch;
+    entry.observedCategories = ["Q1084"];
+    assert(entry.anyLemmaHit && entry.candidates.length == 0);
+}
+
+/**
+ * Complete offline Wikidata coverage summary for a source catalogue.
+ *
+ * Counts describe successful supplied SPARQL results, not absolute Wikidata
+ * completeness. The original source catalogue remains unchanged.
+ * See_Also: buildCoverageReport, coverageJson
+ */
 struct CoverageReport
 {
-    string catalogId;
-    string languageCode;
-    string level;
-    CoverageEntry[] entries;
-    size_t matched;
-    size_t multipleCandidates;
-    size_t noMatch;
-    size_t noLemmaHit;
-    size_t posMismatch;
+    string catalogId; /// Identifier of the original source catalogue.
+    string languageCode; /// Language code carried from the catalogue.
+    string level; /// Learning level carried from the catalogue.
+    CoverageEntry[] entries; /// One entry per source entry, in source order.
+    size_t matched; /// Entries with exactly one accepted candidate.
+    size_t multipleCandidates; /// Entries with multiple accepted candidates.
+    size_t noMatch; /// Entries with no accepted candidates.
+    size_t noLemmaHit; /// No-match entries without an observed lemma binding.
+    size_t posMismatch; /// No-match entries with lemma bindings but rejected POS.
 }
 
+///
+unittest
+{
+    // Coverage counts describe complete supplied query results, not Wikidata.
+    CoverageReport report;
+    report.catalogId = "it-A1";
+    report.noMatch = 1;
+    report.noLemmaHit = 1;
+    assert(report.noMatch == 1 && report.entries.length == 0);
+}
+
+/// Read a mandatory string-valued SPARQL binding.
 private string bindingValue(JSONValue row, string key)
 {
     enforce(row.type == JSONType.object, "Binding must be a JSON object");
@@ -47,6 +85,7 @@ private string bindingValue(JSONValue row, string key)
     return (*value).str;
 }
 
+/// Extract an entity identifier from a Wikidata category URI.
 private string qId(string value)
 {
     enum http = "http://www.wikidata.org/entity/";
@@ -58,13 +97,27 @@ private string qId(string value)
 }
 
 /**
- * Each batch must have a complete response. Network or SPARQL failures must
- * abort the process upstream, never become false "no Wikidata match" claims.
+ * Summarize complete Lexeme lookup results for every source-catalogue entry.
  *
- * `noLemmaHit` means no exact-lemma result in the returned SPARQL results,
- * not proof that the lexical expression is absent from all Wikidata data.
- * `posMismatch` means an exact-lemma hit exists but its category does not
- * match any of the catalog's search targets.
+ * Combine the original catalogue, the query batches and their successful
+ * responses with the matching outcomes. Entries stay in source order, even
+ * if no Wikidata candidate was accepted. A $(D noLemmaHit) counts entries
+ * without a lemma binding; $(D posMismatch) counts entries with a lemma
+ * binding but no accepted lexical category. Both are subsets of $(D noMatch).
+ *
+ * Params:
+ *   catalog = Complete original vocabulary catalogue.
+ *   batches = Lookup batches for the catalogue.
+ *   responses = One complete parsed SPARQL JSON response per batch.
+ *   matches = One source-ordered match result per original catalogue entry.
+ * Returns: Detailed entry outcomes and totals for the supplied results.
+ * Throws: $(D Exception) when responses are incomplete or malformed,
+ *         results contain unrequested lemmas, or match order/count differs
+ *         from the catalogue.
+ * Notes: A failed query must never be replaced with an empty response.
+ *        Results describe the supplied data, not all possible Wikidata
+ *        Lexemes or Senses. The source catalogue is not changed.
+ * See_Also: coverageJson, matchCatalog, CoverageReport
  */
 CoverageReport buildCoverageReport(
     ref const VocabularyCatalog catalog,
@@ -77,8 +130,20 @@ CoverageReport buildCoverageReport(
     enforce(matches.length == catalog.entries.length,
         "Every source entry requires exactly one mapping result");
 
-    struct Hit { string lemma; string category; }
-    Hit[] hits;
+    // Research F2-B: validation-first compact category observation chains.
+    // The one contiguous array contains only category and next-index data.
+    struct CategoryHit
+    {
+        string category;
+        size_t next;
+    }
+    struct LemmaChain
+    {
+        size_t first;
+        size_t last;
+    }
+    LemmaChain[string] categoryChains;
+    size_t validHitCount;
     foreach (i, response; responses)
     {
         enforce(response.type == JSONType.object, "Invalid SPARQL response");
@@ -93,9 +158,31 @@ CoverageReport buildCoverageReport(
             auto lemma = bindingValue(row, "lemma");
             enforce(batches[i].lemmas.canFind(lemma),
                 "SPARQL result lemma was not requested");
-            hits ~= Hit(lemma, qId(bindingValue(row, "category")));
+            qId(bindingValue(row, "category"));
+            ++validHitCount;
         }
     }
+
+    CategoryHit[] categoryHits;
+    categoryHits.length = validHitCount;
+    size_t nextHit;
+    foreach (response; responses)
+        foreach (row; response["results"]["bindings"].array)
+        {
+            auto lemma = bindingValue(row, "lemma");
+            auto category = qId(bindingValue(row, "category"));
+            const hitIndex = nextHit++;
+            categoryHits[hitIndex] = CategoryHit(category, size_t.max);
+            auto chain = lemma in categoryChains;
+            if (chain is null)
+                categoryChains[lemma] = LemmaChain(hitIndex, hitIndex);
+            else
+            {
+                categoryHits[(*chain).last].next = hitIndex;
+                (*chain).last = hitIndex;
+            }
+        }
+    assert(nextHit == validHitCount);
 
     CoverageReport report;
     report.catalogId = catalog.id;
@@ -122,13 +209,19 @@ CoverageReport buildCoverageReport(
             entry.candidates ~= copy;
         }
         foreach (target; sourceEntry.lookupTargets)
-            foreach (hit; hits)
-                if (target.lemma == hit.lemma)
-                {
-                    entry.anyLemmaHit = true;
-                    if (!entry.observedCategories.canFind(hit.category))
-                        entry.observedCategories ~= hit.category;
-                }
+        {
+            auto chain = target.lemma in categoryChains;
+            if (chain is null)
+                continue;
+            for (size_t hitIndex = (*chain).first;
+                hitIndex != size_t.max; hitIndex = categoryHits[hitIndex].next)
+            {
+                const category = categoryHits[hitIndex].category;
+                entry.anyLemmaHit = true;
+                if (!entry.observedCategories.canFind(category))
+                    entry.observedCategories ~= category;
+            }
+        }
         final switch (entry.status)
         {
             case CatalogMatchStatus.matched:
@@ -153,7 +246,38 @@ CoverageReport buildCoverageReport(
     return report;
 }
 
-/// Human/machine-readable local JSON report. No catalogue records are removed.
+///
+unittest
+{
+    import wikidata.catalog : parseCatalog;
+    import wikidata.catalog_matcher : buildCatalogLookupBatches, matchCatalog;
+    // Report absence in supplied complete results, never delete catalogue data.
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"demo",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"a","lemma":"gatto"}]}`);
+    auto batches = buildCatalogLookupBatches(catalog);
+    JSONValue[] responses = [parseJSON(`{"results":{"bindings":[]}}`)];
+    auto matches = matchCatalog(catalog, batches, responses);
+    auto report = buildCoverageReport(catalog, batches, responses, matches);
+    assert(report.entries.length == catalog.entries.length);
+    assert(report.noMatch == 1 && report.noLemmaHit == 1);
+}
+
+
+/**
+ * Convert a completed coverage report to a structured JSON document.
+ *
+ * Use this for local inspection or serialization without modifying the
+ * independent vocabulary catalogue. Output contains schemaVersion 1,
+ * catalogue metadata, summary totals and an entry for each source record.
+ *
+ * Params:
+ *   report = Previously calculated coverage report.
+ * Returns: JSON object with summary and per-entry candidate details.
+ * Notes: The output reflects the supplied report; this function does not
+ *        re-run matching, consult Wikidata or independently verify counts.
+ * See_Also: buildCoverageReport, CoverageEntry
+ */
 JSONValue coverageJson(ref const CoverageReport report)
 {
     JSONValue output = JSONValue.emptyObject;
@@ -212,6 +336,45 @@ JSONValue coverageJson(ref const CoverageReport report)
     }
     output["entries"] = rows;
     return output;
+}
+
+///
+unittest
+{
+    import wikidata.catalog : parseCatalog;
+    import wikidata.catalog_matcher : buildCatalogLookupBatches, matchCatalog;
+    // JSON serialization keeps the source entry even without any hit.
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"demo",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"a","lemma":"gatto"}]}`);
+    auto batches = buildCatalogLookupBatches(catalog);
+    JSONValue[] responses = [parseJSON(`{"results":{"bindings":[]}}`)];
+    auto matches = matchCatalog(catalog, batches, responses);
+    auto report = buildCoverageReport(catalog, batches, responses, matches);
+    auto json = coverageJson(report);
+    assert(json["entries"].array.length == 1);
+    assert(json["summary"]["catalogEntries"].integer == 1);
+}
+
+
+///
+unittest
+{
+    import wikidata.catalog : parseCatalog;
+    import wikidata.catalog_matcher : buildCatalogLookupBatches, matchCatalog;
+    // One source entry remains visible even when a successful query is empty.
+    auto catalog = parseCatalog(`{"schemaVersion":1,"id":"demo",
+      "languageCode":"it","languageEntityId":"Q652","level":"A1",
+      "source":{},"entries":[{"id":"1","lemma":"gatto"}]}`);
+    auto batches = buildCatalogLookupBatches(catalog);
+    JSONValue[] responses = [parseJSON(`{"results":{"bindings":[]}}`)];
+    auto matches = matchCatalog(catalog, batches, responses);
+    auto report = buildCoverageReport(catalog, batches, responses, matches);
+    assert(report.entries.length == 1);
+    assert(report.noMatch == 1 && report.noLemmaHit == 1);
+    assert(report.posMismatch == 0);
+    auto json = coverageJson(report);
+    assert(json["summary"]["catalogEntries"].integer == 1);
 }
 
 unittest

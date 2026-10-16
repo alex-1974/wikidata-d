@@ -9,7 +9,18 @@ import std.exception : enforce;
 import std.algorithm.searching : canFind;
 import std.format : format;
 
-/// Escape a UTF-8 string for a double-quoted SPARQL string literal.
+/**
+ * Convert user-supplied text into a quoted SPARQL string literal.
+ *
+ * Use this when constructing SPARQL text from a lemma, label or other
+ * literal value. The result includes surrounding double quotes and escapes
+ * special characters; append a language tag separately if required.
+ *
+ * Params:
+ *   input = Text to include as one SPARQL string literal.
+ * Returns: Quoted, escaped literal ready to insert in SPARQL text.
+ * See_Also: buildLexemeQuery
+ */
 string sparqlString(string input)
 {
     string output = "\"";
@@ -33,7 +44,26 @@ string sparqlString(string input)
     return output ~ "\"";
 }
 
-/// Validate a Wikidata Q/L/P entity identifier before placing it in SPARQL.
+///
+unittest
+{
+    // The returned text includes quotes and escapes embedded special characters.
+    assert(sparqlString("gatto") == "\"gatto\"");
+    assert(sparqlString("a\"b") == "\"a\\\"b\"");
+}
+
+/**
+ * Check whether a string has the syntax of a Wikidata Q-, L- or P-identifier.
+ *
+ * Use this for input validation before constructing a query. This checks
+ * spelling only: it does not look up the entity or establish that it exists.
+ * Forms and Senses have separate identifiers and are not accepted here.
+ *
+ * Params:
+ *   id = Candidate Wikidata identifier, such as `Q146`, `L5577` or `P31`.
+ * Returns: `true` for a syntactically valid Q/L/P identifier; otherwise `false`.
+ * See_Also: buildLexemeQuery
+ */
 bool isEntityId(string id)
 {
     if (id.length < 2 || (id[0] != 'Q' && id[0] != 'L' && id[0] != 'P'))
@@ -46,6 +76,16 @@ bool isEntityId(string id)
     return true;
 }
 
+///
+unittest
+{
+    assert(isEntityId("Q146")); // Item: cat
+    assert(isEntityId("L5577")); // Lexeme identifier
+    assert(!isEntityId("Q0"));   // Identifier zero is invalid
+    assert(!isEntityId("L5577-F1")); // Form identifiers use another syntax
+}
+
+/// Check the language-tag syntax accepted by this module's query builder.
 private bool validLanguageCode(string code)
 {
     if (code.length == 0)
@@ -57,16 +97,30 @@ private bool validLanguageCode(string code)
 }
 
 /**
- * Build a lexeme discovery query.
+ * Create a SPARQL query for finding Wikidata Lexemes by exact written lemma.
+ *
+ * Use this to discover candidate Lexemes for entries in an independent
+ * vocabulary catalogue. A match is a candidate, not a verified translation
+ * or a guarantee that every Wikidata Lexeme has been found.
+ *
+ * Supply the language twice: its code for the written lemma and its
+ * Wikidata language item. Optionally restrict the lexical category (part of
+ * speech); otherwise the query returns candidates of any category.
+ * This function only creates query text and never makes an HTTP request.
  *
  * Params:
- *   languageCode = Lexeme representation language (e.g. "it", "de", "sw").
- *   languageEntity = Wikidata item identifying that language (e.g. "Q652").
- *   lemmas = Exact written lemmas. All candidate lexical categories are returned.
- *   categoryEntity = Optional lexical category Q-ID; empty means no POS filter.
- *
- * Returns: SPARQL text. A result row is returned for each available sense;
- *          lexemes without senses are returned with unbound ?sense.
+ *   languageCode = Written lemma language tag, such as `"it"` or `"sw"`.
+ *   languageEntity = Wikidata language item Q-ID, e.g. `"Q652"` for Italian.
+ *   lemmas = One or more exact, nonempty written forms to look up.
+ *   categoryEntity = Optional lexical-category Q-ID; empty means all categories.
+ * Returns: SPARQL query text suitable for a Wikidata Query Service client.
+ *          Each matching Lexeme may yield multiple Sense rows; a Lexeme
+ *          without a Sense can still appear with an unbound Sense variable.
+ * Throws: `Exception` if a language tag, Q-ID or lemma is invalid, or if
+ *         no lemmas are supplied.
+ * Notes: The query does not prove the absence of a Lexeme when a service
+ *        returns no results. Consult the client response and its error status.
+ * See_Also: sparqlString, isEntityId
  */
 string buildLexemeQuery(
     string languageCode,
@@ -113,6 +167,19 @@ string buildLexemeQuery(
         ~ "}\n";
 
     return query;
+}
+
+///
+unittest
+{
+    // Find exact Italian lemmas, without limiting their part of speech.
+    auto query = buildLexemeQuery("it", "Q652", ["gatto", "nero"]);
+    assert(query.canFind("\"gatto\"@it"));
+    assert(query.canFind("\"nero\"@it"));
+
+    // Add a lexical category when the caller needs a specific part of speech.
+    auto nouns = buildLexemeQuery("it", "Q652", ["gatto"], "Q1084");
+    assert(nouns.canFind("FILTER(?category = wd:Q1084)"));
 }
 
 unittest
