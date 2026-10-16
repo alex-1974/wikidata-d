@@ -139,6 +139,20 @@ bool loadCachedBatch(string filePath, string query, out JSONValue response)
     return decodeBatchEnvelope(parseJSON(readText(filePath)), query, response);
 }
 
+///
+unittest
+{
+    // A genuinely missing local checkpoint is a cache miss, not a Wikidata no-match.
+    import std.file : exists, tempDir;
+    import std.path : buildPath;
+    import std.uuid : randomUUID;
+    auto path = buildPath(tempDir(), "wikidata-c9a-" ~ randomUUID().toString() ~ ".json");
+    assert(!exists(path));
+    JSONValue restored;
+    assert(!loadCachedBatch(path, "SELECT * WHERE {}", restored));
+}
+
+
 /**
  * Save a validated SPARQL batch response to a local checkpoint file.
  *

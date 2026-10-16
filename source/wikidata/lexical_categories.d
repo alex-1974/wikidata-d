@@ -47,6 +47,18 @@ struct CategoryCompatibility
             ancestorsByCategory[category] ~= ancestor;
     }
 
+    ///
+    unittest
+    {
+        // Relations must be explicitly supplied; they are not inferred.
+        import std.exception : assertThrown;
+        CategoryCompatibility evidence;
+        evidence.add("Q1084", "Q34698");
+        assert(evidence.compatible("Q1084", "Q34698"));
+        assert(!evidence.compatible("Q34698", "Q1084"));
+        assertThrown!Exception(evidence.add("not-a-Q-ID", "Q1084"));
+    }
+
     /**
      * Decide whether a candidate category is acceptable for an expected one.
      *
