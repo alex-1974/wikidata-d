@@ -26,6 +26,15 @@ struct WikidataStatement
     JSONValue raw;     /// Complete original statement JSON.
 }
 
+///
+unittest
+{
+    // The typed target may be empty even when the original statement has data.
+    WikidataStatement statement;
+    statement.propertyId = "P5137";
+    assert(statement.targetId.length == 0);
+}
+
 /**
  * A Form belonging to one Wikidata Lexeme.
  *
@@ -42,6 +51,16 @@ struct WikidataForm
     JSONValue raw; /// Complete original Form JSON including representations.
 }
 
+///
+unittest
+{
+    // Form identity is independent of the owning Lexeme and its Senses.
+    WikidataForm form;
+    form.id = "L5577-F1";
+    form.grammaticalFeatures = ["Q146786"];
+    assert(form.grammaticalFeatures.length == 1);
+}
+
 /**
  * A Sense belonging to one Lexeme, not an inflected Form.
  *
@@ -54,6 +73,15 @@ struct WikidataSense
     string id; /// Original Sense identifier, such as L5577-S1.
     WikidataStatement[] statements; /// Statements attached to this Sense.
     JSONValue raw; /// Complete original Sense JSON, including multilingual glosses.
+}
+
+///
+unittest
+{
+    // A Sense identifies a meaning, not a written inflected Form.
+    WikidataSense sense;
+    sense.id = "L5577-S1";
+    assert(sense.id == "L5577-S1");
 }
 
 /**
@@ -73,6 +101,17 @@ struct WikidataLexeme
     WikidataSense[] senses; /// Separate Senses belonging to this Lexeme.
     WikidataStatement[] statements; /// Lexeme-level statements.
     JSONValue raw; /// Complete original Lexeme JSON, including unknown fields.
+}
+
+///
+unittest
+{
+    // Separate typed collections preserve Lexeme, Form and Sense identity.
+    WikidataLexeme lexeme;
+    lexeme.id = "L5577";
+    lexeme.forms = [WikidataForm.init];
+    lexeme.senses = [WikidataSense.init];
+    assert(lexeme.forms.length == 1 && lexeme.senses.length == 1);
 }
 
 /// Require a JSON object and report a descriptive validation error.

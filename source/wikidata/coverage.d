@@ -29,6 +29,18 @@ struct CoverageEntry
     string[] observedCategories; /// Categories observed before POS filtering.
 }
 
+///
+unittest
+{
+    // A lemma hit may still fail part-of-speech filtering.
+    CoverageEntry entry;
+    entry.catalogEntryId = "source-1";
+    entry.anyLemmaHit = true;
+    entry.status = CatalogMatchStatus.noMatch;
+    entry.observedCategories = ["Q1084"];
+    assert(entry.anyLemmaHit && entry.candidates.length == 0);
+}
+
 /**
  * Complete offline Wikidata coverage summary for a source catalogue.
  *
@@ -47,6 +59,17 @@ struct CoverageReport
     size_t noMatch; /// Entries with no accepted candidates.
     size_t noLemmaHit; /// No-match entries without an observed lemma binding.
     size_t posMismatch; /// No-match entries with lemma bindings but rejected POS.
+}
+
+///
+unittest
+{
+    // Coverage counts describe complete supplied query results, not Wikidata.
+    CoverageReport report;
+    report.catalogId = "it-A1";
+    report.noMatch = 1;
+    report.noLemmaHit = 1;
+    assert(report.noMatch == 1 && report.entries.length == 0);
 }
 
 /// Read a mandatory string-valued SPARQL binding.

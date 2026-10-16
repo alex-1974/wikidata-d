@@ -28,6 +28,17 @@ struct FormCandidate
     string lexicalCategoryId;   /// Wikidata POS; not yet validated against catalogue.
 }
 
+///
+unittest
+{
+    // A Form is not a Sense and its Lexeme is kept separately.
+    FormCandidate candidate;
+    candidate.word = "gatti";
+    candidate.lexemeId = "L5577";
+    candidate.formId = "L5577-F1";
+    assert(candidate.formId != candidate.lexemeId);
+}
+
 /**
  * Check whether a string uses Wikidata's Lexeme-Form identifier syntax.
  *

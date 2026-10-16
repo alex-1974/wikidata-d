@@ -22,6 +22,16 @@ struct CatalogLookupTarget
     string lexicalCategoryId; /// Optional expected Wikidata POS Q-ID.
 }
 
+///
+unittest
+{
+    // One spelling may have its own expected lexical category.
+    CatalogLookupTarget target;
+    target.lemma = "gatto";
+    target.lexicalCategoryId = "Q1084";
+    assert(target.lemma == "gatto");
+}
+
 /**
  * An original source-catalogue entry and its independent lookup targets.
  *
@@ -37,6 +47,17 @@ struct CatalogEntry
     string[] lookupLemmas; /// Search spellings retained for existing consumers.
     CatalogLookupTarget[] lookupTargets; /// Searches and optional per-variant POS.
     JSONValue raw; /// Complete original catalogue-entry JSON.
+}
+
+///
+unittest
+{
+    // The source record survives independently of future Wikidata matches.
+    CatalogEntry entry;
+    entry.id = "source-1";
+    entry.lemma = "gatto";
+    entry.lookupTargets = [CatalogLookupTarget("gatto", "Q1084")];
+    assert(entry.lookupTargets.length == 1 && entry.lemma == "gatto");
 }
 
 /**
@@ -55,6 +76,18 @@ struct VocabularyCatalog
     JSONValue source; /// Source metadata exactly as supplied.
     CatalogEntry[] entries; /// All catalogue entries in source order.
     JSONValue raw; /// Full original catalogue JSON.
+}
+
+///
+unittest
+{
+    // Language and level belong to the external reference catalogue.
+    VocabularyCatalog catalog;
+    catalog.id = "it-A1";
+    catalog.languageCode = "it";
+    catalog.level = "A1";
+    catalog.entries = [CatalogEntry.init];
+    assert(catalog.entries.length == 1 && catalog.level == "A1");
 }
 
 /// Return a mandatory JSON field or reject a missing field.
