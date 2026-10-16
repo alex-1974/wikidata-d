@@ -116,7 +116,45 @@ private bool validLanguageCode(string code)
 }
 
 /**
- * Create a SPARQL query for finding Wikidata Lexemes by exact written lemma.
+ * Build an exact-Lemma Lexeme query using the original v0.1.0 API.
+ *
+ * Use this for the default SPARQL representation; it never sends a request.
+ * Both the function type and default arguments are preserved for consumers
+ * compiled against v0.1.0. Use $(D buildLexemeQueryWithOptimization) when
+ * explicitly selecting a backend-specific execution strategy.
+ *
+ * Params:
+ *   languageCode = Written-lemma language tag, such as `"it"`.
+ *   languageEntity = Wikidata language Q-ID, such as `"Q652"`.
+ *   lemmas = Nonempty exact written lemmas to search.
+ *   categoryEntity = Optional lexical-category Q-ID, empty for all categories.
+ * Returns: SPARQL query text; Lexemes can appear without any Sense.
+ * Throws: $(D Exception) for invalid language, category or lemma arguments.
+ * Notes: A successful empty response is not proof of global absence.
+ * See_Also: buildLexemeQueryWithOptimization, QueryOptimization
+ */
+string buildLexemeQuery(
+    string languageCode,
+    string languageEntity,
+    const(string)[] lemmas,
+    string categoryEntity = "")
+{
+    return buildLexemeQueryWithOptimization(languageCode, languageEntity,
+        lemmas, categoryEntity, QueryOptimization.automatic);
+}
+
+///
+unittest
+{
+    // Existing consumers may take the original function's address.
+    auto lookup = &buildLexemeQuery;
+    auto query = lookup("it", "Q652", ["gatto"], "");
+    assert(query.canFind("\"gatto\"@it"));
+    assert(!query.canFind("hint:optimizer"));
+}
+
+/**
+ * Create a SPARQL query with explicit execution-strategy selection.
  *
  * Use this to discover candidate Lexemes for entries in an independent
  * vocabulary catalogue. A match is a candidate, not a verified translation
@@ -131,9 +169,9 @@ private bool validLanguageCode(string code)
  *   languageCode = Written lemma language tag, such as `"it"` or `"sw"`.
  *   languageEntity = Wikidata language item Q-ID, e.g. `"Q652"` for Italian.
  *   lemmas = One or more exact, nonempty written forms to look up.
- *   categoryEntity = Optional lexical-category Q-ID; empty means all categories.
- *   optimization = Optional query execution strategy; defaults to automatic.
- *                  The Blazegraph option requires the Blazegraph backend.
+ *   categoryEntity = Lexical-category Q-ID, or empty for all categories.
+ *   optimization = Explicit execution strategy. Use automatic for the
+ *                  original behavior or blazegraphLemmaFirst for Blazegraph.
  * Returns: SPARQL query text suitable for a Wikidata Query Service client.
  *          Each matching Lexeme may yield multiple Sense rows; a Lexeme
  *          without a Sense can still appear with an unbound Sense variable.
@@ -141,14 +179,14 @@ private bool validLanguageCode(string code)
  *         no lemmas are supplied.
  * Notes: The query does not prove the absence of a Lexeme when a service
  *        returns no results. Consult the client response and its error status.
- * See_Also: sparqlString, isEntityId
+ * See_Also: buildLexemeQuery, QueryOptimization, sparqlString, isEntityId
  */
-string buildLexemeQuery(
+string buildLexemeQueryWithOptimization(
     string languageCode,
     string languageEntity,
     const(string)[] lemmas,
-    string categoryEntity = "",
-    QueryOptimization optimization = QueryOptimization.automatic)
+    string categoryEntity,
+    QueryOptimization optimization)
 {
     enforce(validLanguageCode(languageCode), "Invalid language code");
     enforce(isEntityId(languageEntity) && languageEntity[0] == 'Q',
@@ -250,13 +288,13 @@ unittest
 {
     // Old callers retain their exact original query representation.
     auto baseline = buildLexemeQuery("it", "Q652", ["gatto"]);
-    auto explicitDefault = buildLexemeQuery("it", "Q652", ["gatto"], "",
+    auto explicitDefault = buildLexemeQueryWithOptimization("it", "Q652", ["gatto"], "",
         QueryOptimization.automatic);
     assert(baseline == explicitDefault);
     assert(baseline.canFind("WHERE {\n  VALUES ?lemma {"));
     assert(!baseline.canFind("hint:optimizer"));
 
-    auto optimized = buildLexemeQuery("it", "Q652", ["gatto"], "",
+    auto optimized = buildLexemeQueryWithOptimization("it", "Q652", ["gatto"], "",
         QueryOptimization.blazegraphLemmaFirst);
     assert(optimized.canFind("PREFIX hint: <http://www.bigdata.com/queryHints#>"));
     assert(optimized.canFind("WHERE {\n  hint:Query hint:optimizer \"None\" .\n  VALUES"));
@@ -265,7 +303,7 @@ unittest
     assert(optimized.canFind("?lexeme a ontolex:LexicalEntry"));
     assert(optimized.canFind("ontolex:sense ?sense"));
     assert(optimized.canFind("wdt:P5137"));
-    auto filtered = buildLexemeQuery("it", "Q652", ["gatto"], "Q1084",
+    auto filtered = buildLexemeQueryWithOptimization("it", "Q652", ["gatto"], "Q1084",
         QueryOptimization.blazegraphLemmaFirst);
     assert(filtered.canFind("FILTER(?category = wd:Q1084)"));
 }
