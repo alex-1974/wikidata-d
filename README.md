@@ -46,8 +46,10 @@ catalogues. A Lexeme/Form/Sense candidate does not prove a translation.
 
 ## License
 
-Distributed under the Boost Software License, Version 1.0.
-See [LICENSE_1_0.txt](LICENSE_1_0.txt).
+Current development and future releases (subject to release approval): MIT.
+See [LICENSE](LICENSE). The already published `v0.1.0` tag and GitHub
+release remain historically distributed under BSL-1.0; see the
+[original Boost license](LICENSE_1_0.txt).
 
 ## Build and test
 
