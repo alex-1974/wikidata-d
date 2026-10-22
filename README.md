@@ -14,6 +14,19 @@ verified modules: `query`, `client`, `lexeme`, `catalog`, `catalog_matcher`,
 - The production library makes no grammar synthesis or form-selection claims.
 - Full original Lexeme/Form/Sense JSON is retained by `wikidata.lexeme`.
 
+## Current release and repository boundary
+
+The published GitHub release is [v0.1.1](https://github.com/alex-1974/wikidata-d/releases/tag/v0.1.1)
+(2026-10-17), under MIT. `v0.1.0` retains its historical BSL-1.0 license.
+DUB registry publication is not asserted.
+
+Tessera, the vocabulary learning application, lives separately in
+[`vokabeltrainer-d`](https://github.com/alex-1974/vokabeltrainer-d).
+This repository remains its reusable Wikidata library; learning state,
+exercise eligibility and UI behavior belong to Tessera. Offline index and
+runtime experiments remain in `wikidata-d-research` pending a separate
+consumer-qualified production integration decision.
+
 ## Using wikidata-d
 
 This is a DUB library, not a command-line program. Add it as a dependency
@@ -46,7 +59,7 @@ catalogues. A Lexeme/Form/Sense candidate does not prove a translation.
 
 ## License
 
-Current development and future releases (subject to release approval): MIT.
+Current development and v0.1.1: MIT.
 See [LICENSE](LICENSE). The already published `v0.1.0` tag and GitHub
 release remain historically distributed under BSL-1.0; see the
 [original Boost license](LICENSE_1_0.txt).
@@ -72,7 +85,9 @@ For the bounded R1.14 memory-ownership, failure and single-writer cache
 contracts see [API_CONTRACTS.md](docs/API_CONTRACTS.md). This does **not**
 constitute an API freeze.
 
-R1.14-L documents the [internal v0.1.x source-API compatibility decision](docs/API_STABILITY.md). This policy becomes active **only after a separately signed internal API-freeze tag**; it is not a DUB release.
+R1.14-L records the [v0.1.x source-API compatibility baseline](docs/API_STABILITY.md),
+activated by the separate internal tag `api-freeze/v0.1.0` at `94a7c849`.
+The internal tag and public release tags remain distinct.
 
 For local setup see [LOCAL_SETUP.md](LOCAL_SETUP.md).
 
