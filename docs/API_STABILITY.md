@@ -1,15 +1,23 @@
 # Source-API-Kompatibilität: interne Linie v0.1.x
 
-**Status: INTERNER SOURCE-API-KOMPATIBILITÄTSVERTRAG. Gilt erst ab dem signierten, annotierten internen API-Freeze-Tag `api-freeze/v0.1.0`; ohne diesen Tag ist die Linie noch nicht aktiviert. Kein öffentliches Release.**
+**Stand 2026-10-22: interne Source-API-Kompatibilitätslinie v0.1.x aktiviert.**
+Der annotierte interne Tag `api-freeze/v0.1.0` zeigt auf
+`94a7c8499806859a90462c99c687c59cc3dff3cc` (R1.14-L-Merge, 2026-10-15).
+Er bleibt von den später veröffentlichten GitHub-Releases `v0.1.0` und
+`v0.1.1` getrennt. DUB-Registry-Veröffentlichung wird nicht behauptet.
 
-**Geprüfte Codebasis:** `wikidata-d@c573d74ed12fdbd73ed0caac674c77aaab4383f3` (R1.14-K, ausschließlich Dokumentation seit dem geprüften D-Kern `4b015aa9deec48dd9d5045b0633037b919c90e76`).
-**Geplante interne Linie:** `v0.1.x` · **geplanter interner Tag:** `api-freeze/v0.1.0` · **Tagziel:** erst die freigegebene R1.14-L-Dokumentations-Merge-SHA. Keines davon ist ein DUB-/GitHub-Release.
+Die vor dem Freeze geprüfte Dokumentationsbasis war
+`c573d74ed12fdbd73ed0caac674c77aaab4383f3`, der geprüfte D-Kern
+`4b015aa9deec48dd9d5045b0633037b919c90e76`. Der aktuelle veröffentlichte
+Release ist `v0.1.1` auf `bb56ba1db89906c190e2d0f79da45f4647a53082`.
+Die historische Inventur beschreibt die damalige Basis; additive APIs in
+v0.1.1 ändern nicht rückwirkend deren Anzahl.
 
 Diese Richtlinie übernimmt den überprüften Ist-Zustand, statt vor dem Freeze öffentliche Hilfsfunktionen und alte Felder zu entfernen. Der exakte Umfang ist im revisionsgebundenen [R1.14-I-Manifest](https://github.com/alex-1974/wikidata-d-research/blob/3fdcdf6320147039d9f18d0506715a7ed6d7fcf6/experiments/r1_14i_public_api_review/API_SURFACE_MANIFEST.json) erfasst. Die ergänzenden [API-Verträge](API_CONTRACTS.md) gelten unverändert.
 
 ## 1. Was wir stabilisieren
 
-Der überprüfte Bestand umfasst **10 D-Module**, **16 öffentliche Structs**, **ein öffentliches Enum**, **28 öffentliche Modulfunktionen inklusive Überladungen**, **6 öffentlich aufrufbare Methoden/Konstruktoren** und **75 öffentliche Felder**. Damit werden die **17 Typen / 34 aufrufbaren Signaturen / 75 Felder** ausdrücklich als Source-API-Kompatibilitätsbasis vorgeschlagen. Die Inventarisierung ist versionsgebunden und manuell geprüft; sie ist kein generischer D-Parser.
+Der überprüfte Bestand umfasst **10 D-Module**, **16 öffentliche Structs**, **ein öffentliches Enum**, **28 öffentliche Modulfunktionen inklusive Überladungen**, **6 öffentlich aufrufbare Methoden/Konstruktoren** und **75 öffentliche Felder**. Damit werden die **17 Typen / 34 aufrufbaren Signaturen / 75 Felder** als ursprüngliche Source-API-Kompatibilitätsbasis festgehalten. Die Inventarisierung ist versionsgebunden und manuell geprüft; sie ist kein generischer D-Parser.
 
 Für kompatible Änderungen innerhalb von `v0.1.x` gelten diese Regeln:
 
@@ -41,9 +49,13 @@ Für kompatible Änderungen innerhalb von `v0.1.x` gelten diese Regeln:
 | Geänderte bestehende JSON-/Cache-Semantik | Nicht stillschweigend | Schema-/Versionsentscheidung, positive und negative Tests |
 | Andere generierte SPARQL-Bytes | Möglich bei erhaltener Abfrage-/Fehlersemantik | Nachvollziehbare Review, Cache-Invalidierungs- und Datenbelege |
 
-**Versionsentscheidung:** `v0.1.x` ist vorerst eine **interne Source-Kompatibilitätslinie**, keine freigegebene Bibliotheksversion. Ein inkompatibler Schnitt ist mindestens als **neue Linie** (etwa `v0.2.x`) zu behandeln, nicht als Patch innerhalb von `v0.1.x`. Es gibt keine zeitlich befristete Supportzusage: Die Linie bleibt Referenz, bis eine ausdrücklich beschlossene Nachfolgelinie inklusive Migrationshinweisen sie ersetzt. Eine spätere öffentliche SemVer- und DUB-Release-Politik erfordert eine getrennte Entscheidung.
+**Versionsentscheidung:** `v0.1.x` bezeichnet die Source-Kompatibilitätslinie; die öffentlichen Releases v0.1.0 und v0.1.1 wurden später separat freigegeben. Ein inkompatibler Schnitt ist mindestens als **neue Linie** (etwa `v0.2.x`) zu behandeln, nicht als Patch innerhalb von `v0.1.x`. Es gibt keine zeitlich befristete Supportzusage: Die Linie bleibt Referenz, bis eine ausdrücklich beschlossene Nachfolgelinie inklusive Migrationshinweisen sie ersetzt. Eine spätere öffentliche SemVer- und DUB-Release-Politik erfordert eine getrennte Entscheidung.
 
-## 4. Freeze-Gate: nur auf geprüften Commit und nur mit signiertem Tag
+## 4. Historisches Freeze-Gate (abgeschlossen)
+
+Die folgenden Bedingungen dokumentieren das ursprüngliche Freigabeverfahren.
+Der Tag existiert bereits; diese Anleitung ist kein Auftrag zur erneuten
+Ausführung oder zum Ersetzen des Tags.
 
 Diese Datei **allein aktiviert keinen Freeze**. Die Annahme erfolgt in einem eigenen, überprüften Dokumentations-PR. Danach ist der exakte Merge-Commit erneut gegen die unveränderten zehn Produktionsmodule, die sieben Beispiele und die beiden Compiler zu prüfen. Der Tagname `api-freeze/v0.1.0` darf nur verwendet werden, wenn er weder lokal noch remote belegt ist und der freigegebene Commit unverändert HEAD von `origin/develop` ist.
 
@@ -53,7 +65,7 @@ Erst der **explizite XPS-Befehl `--freeze`** darf im getrennten Worktree einen *
 
 ## 5. Release-Gate bleibt eigenständig
 
-Ein späterer Release-PR nach `main` benötigt unverändert die sechs Compiler-Gates **DMD 2.111.0 / 2.112.1 / 2.113.0** und **LDC 1.41.0 / 1.42.0 / 1.43.0**, außerdem separate Entscheidungen zu Feature-Freeze, DDOX, Version, DUB-Veröffentlichung und Distribution. Ein erfolgreicher Source-API-Freeze ersetzt keines dieser Gates.
+Ein Release-PR nach `main` benötigt unverändert die sechs Compiler-Gates **DMD 2.111.0 / 2.112.1 / 2.113.0** und **LDC 1.41.0 / 1.42.0 / 1.43.0**, außerdem separate Entscheidungen zu Feature-Freeze, DDOX, Version, DUB-Veröffentlichung und Distribution. Ein erfolgreicher Source-API-Freeze ersetzt keines dieser Gates.
 
 ## 6. Originalbelege
 

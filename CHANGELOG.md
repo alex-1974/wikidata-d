@@ -1,13 +1,18 @@
 # Changelog
 
-All notable changes will be recorded here when a public release is approved.
-The first GitHub release, **v0.1.0**, has been published under BSL-1.0.
+Public GitHub releases: v0.1.0 (BSL-1.0) and v0.1.1 (MIT).
 
-## [Unreleased] — preparation for v0.1.1
+## [Unreleased]
+
+- Clarified the released version and the boundary with Tessera.
+
+## [0.1.1] — 2026-10-17
 
 - Added the opt-in Blazegraph lemma-first SPARQL query strategy (PR #43).
-- Prepared the MIT license transition for subsequent releases (Issue #42);
-  copyright/provenance review and release approval remain required.
+- Adopted MIT for v0.1.1 while preserving the historical v0.1.0 license.
+- Preserved original v0.1.0 function signatures and function-pointer types;
+  exposed optimization through separately named APIs (PR #46).
+- Published at `bb56ba1db89906c190e2d0f79da45f4647a53082` after release PR #45.
 
 ## [0.1.0] — first GitHub release (BSL-1.0)
 
